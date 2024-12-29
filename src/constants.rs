@@ -4,21 +4,21 @@ use once_cell::sync::Lazy;
 use colored::*;
 
 pub const CONFIG_FILE: &str = "Kiln.toml";
-pub const VALGRIND_OUT: &str = "trufc-valgrind-output.xml";
+pub const VALGRIND_OUT: &str = "kiln-valgrind-output.xml";
 
 pub static DATA_DIR: Lazy<PathBuf> = Lazy::new(|| {
 
     let paths = [
-        ("linux", "/usr/share/trufc/", "~/.local/share/trufc/"),
+        ("linux", "/usr/share/kiln/", "~/.local/share/kiln/"),
         (
             "macos",
-            "/Library/Application Support/trufc/",
-            "~/Library/Application Support/trufc/",
+            "/Library/Application Support/kiln/",
+            "~/Library/Application Support/kiln/",
         ),
         (
             "windows",
-            "C:\\ProgramData\\trufc\\",
-            "C:\\Users\\%USERNAME%\\AppData\\Local\\trufc\\",
+            "C:\\ProgramData\\kiln\\",
+            "C:\\Users\\%USERNAME%\\AppData\\Local\\kiln\\",
         ),
     ];
 

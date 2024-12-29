@@ -3,9 +3,9 @@ use crate::{utils::{self, Language}, valgrind};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "TrufC")]
-#[command(version = "0.0.7")]
-#[command(about = "A build system that integrates with truffle optimizations.", long_about = None)]
+#[command(name = "Kiln")]
+#[command(version = "0.1.1")]
+#[command(about = "A modern build system for C/C++", long_about = None)]
 pub struct CliCommand {
     #[command(subcommand)]
     pub command: Commands,
@@ -24,7 +24,7 @@ pub enum Commands {
         language: utils::Language,
     },
 
-    // Clap doesn't provide any way to structure the syntax to be `trufc run --profile
+    // Clap doesn't provide any way to structure the syntax to be `kiln run --profile
     // So, we'll have to parse these manually.
     Build {
         profile: String,

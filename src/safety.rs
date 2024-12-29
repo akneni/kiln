@@ -219,7 +219,7 @@ pub fn exec_w_valgrind(bin_path: &str, passthough_args: &Vec<String>) -> Result<
 
 
 /// Returns a vector of human readable error messages 
-/// meant for the end user of TrufC to see
+/// meant for the end user of Kiln to see
 pub fn print_vg_errors(vg_output: &VgOutput) {
     for err in &vg_output.errors {
         let mut filename = "UKNOWN".to_string();

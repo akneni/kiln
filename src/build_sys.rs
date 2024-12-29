@@ -11,7 +11,7 @@ use std::{
 pub fn create_project(path: &Path, lang: Language) -> Result<()> {
     let toml_path = path.join(CONFIG_FILE);
     if toml_path.exists() {
-        return Err(anyhow!("directory is already a TrufC project."));
+        return Err(anyhow!("directory is already a Kiln project."));
     }
 
     let dir_name = path.file_name().unwrap().to_str().unwrap();
@@ -42,7 +42,6 @@ pub fn create_project(path: &Path, lang: Language) -> Result<()> {
 
     Ok(())
 }
-
 
 /// Links all the files in the project together
 pub fn link_files(proj_dir: &Path, language: Language) -> Result<Vec<String>> {
@@ -101,7 +100,7 @@ pub fn opt_flags(profile: &str, config: &Config) -> Result<Vec<String>> {
         return Ok(prof.flags.clone());
     }
     Err(anyhow!(
-        "profile `--{}` does not exist. Choose a different profile or declare it in TrufC.toml",
+        "profile `--{}` does not exist. Choose a different profile or declare it in Kiln.toml",
         profile
     ))
 }

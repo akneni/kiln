@@ -70,7 +70,7 @@ fn main() {
             profile = raw_cli_args[2].clone();
         }
         if let Some(idx) = raw_cli_args.iter().position(|i| i == "--") {
-            // Extracts passthough CLI arguments (trufc run)
+            // Extracts passthough CLI arguments (kiln run)
             assert!([2_usize, 3_usize].contains(&idx));
             args = raw_cli_args[(idx + 1)..].to_vec();
         } else {

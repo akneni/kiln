@@ -8,7 +8,6 @@ If you're familiar with Rust's Cargo or Python's Poetry, you'll feel right at ho
 - **Convenience**: Never write a makefile or link 20 files in a single compilation command again.
 - **Security**: From better compiler flag defaults, to static analysis and valgrind integration, Kiln can help you write safer C/C++ code. 
 - **Productivity**: Spend more time writing code and let Kiln take care of generating header files and linking libraries. 
-- **Blazingly Fast Build Speeds**: Written in Rust, enough said :D
 ---
 
 ## Quick Start
@@ -51,7 +50,7 @@ kiln run --valgrind
 ```
 
 ### Generating Header Files
-Automatically create/update your header files
+Automatically create/update your header files (for C only, C++ & CUDA are on the roadmap)
 ```bash
 kiln gen-headers
 ```

@@ -67,13 +67,65 @@ impl<'a> Token<'a> {
                     if let Some(c) = TOKEN_MAPPING[i] {
                         if c == t {
                             string.push((i as u8) as char);
-                            if c == Token::Asterisk || c == Token::Comma {
-                            }
                         }
                     }
                 }
             }
         }
+        string
+    }
+
+    pub fn struct_tokens_to_string(tokens: &[Token]) -> String {
+        let mut string = String::new();
+        let mut in_struct = false;
+
+        for (i, token) in tokens.iter().enumerate() {
+            match token {
+                Token::Object(s) => {
+                    if i > 0 {
+                        let needs_space = matches!(
+                            tokens[i - 1], Token::Object(_) | 
+                            Token::Literal(_) | 
+                            Token::CloseCurlyBrace |
+                            Token::Asterisk
+                        );
+                        if needs_space {
+                            string.push(' ');
+                        }
+                        else if matches!(tokens[i-1], Token::Semicolon | Token::OpenCurlyBrace) {
+                            string.push('\t');
+                        }
+                    }
+                    string.push_str(s);
+                }
+                Token::OpenCurlyBrace => {
+                    in_struct = true;
+                    string.push_str(" {\n");
+                }
+                Token::CloseCurlyBrace => {
+                    in_struct = false;
+                    string.push_str("}");
+                }
+                Token::Semicolon => {
+                    if in_struct {
+                        string.push_str(";\n");
+                    } else {
+                        string.push_str(";\n\n");
+                    }
+                }
+                _ => {
+                    for i in 0..TOKEN_MAPPING.len() {
+                        if let Some(c) = TOKEN_MAPPING[i] {
+                            if c == *token {
+                                string.push((i as u8) as char);
+                            }
+                        }
+                    }
+
+                }
+            }
+        }
+
         string
     }
 }
@@ -128,7 +180,6 @@ pub fn clean_source_code(code: String) -> String {
 
     cleaned.trim().to_string()
 }
-
 
 pub fn tokenize(code: &str) -> Result<Vec<Token>> {
     let code_bytes = code.as_bytes();
@@ -426,26 +477,92 @@ pub fn get_includes<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     includes
 }
 
-pub fn get_fn_calls<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
-    let mut includes = vec![];
+pub fn get_structs<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
+    let mut structs = vec![];
+    if tokens.len() < 3 {
+        return structs;
+    }
     
     let mut idx: usize = 0;
-    while idx < tokens.len() {
-        if let Token::HashTag = tokens[idx] {
-            let mut end = idx;
-            skip_to_oneof(
-                tokens, 
-                &[Token::GreaterThan, Token::Literal("-")],
-                &mut end
-            );
-            includes.push(&tokens[idx..(end+1)]);
-            idx = end;
-            continue;
+    while idx < tokens.len() - 2 {
+        if let Token::Object(obj) = tokens[idx] {
+            if !["typedef", "struct"].contains(&obj) {
+                idx += 1;
+                continue;
+            }
+            else if "typedef" == obj {
+                let obj_2 = if let Token::Object(obj_2) = tokens[idx+1] {
+                    obj_2  
+                } else {
+                    "-"
+                };
+                if obj_2 != "struct" {
+                    idx += 1;
+                    continue;
+                }
+            }
+            let length = match struct_len(&tokens[idx..]) {
+                Some(l) => l,
+                None => {
+                    idx += 1;
+                    continue;
+                }
+            };
+
+            let end = idx + length + 1;
+            if tokens[end-1] != Token::Semicolon {
+                idx += 1;
+                continue;
+            }
+            if (
+                tokens[end-2] != Token::CloseCurlyBrace &&
+                std::mem::discriminant(&tokens[end-2]) != std::mem::discriminant(&Token::Object("_"))
+            ) {
+                idx += 1;
+                continue;
+            }
+
+            structs.push(&tokens[idx..end]);
+            idx = end-1;
         }
-        idx += 1;
+        else {
+            idx += 1;
+        }
     }
 
-    includes
+    structs
+}
+
+fn struct_len(tokens: &[Token]) -> Option<usize> {
+    let mut num_brackets = 0;
+    let mut contains_brackets = false;
+
+    for (i, t) in tokens.iter().enumerate() {
+        match t {
+            Token::OpenCurlyBrace => {
+                num_brackets += 1;
+                contains_brackets = true;
+            },
+            Token::CloseCurlyBrace => {
+                contains_brackets = true;
+                num_brackets -= 1;
+                if num_brackets < 0 {
+                    return None;
+                }
+            },
+            Token::Semicolon => {
+                if num_brackets == 0 {
+                    if contains_brackets {
+                        return Some(i);
+                    }
+                    return None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
 }
 
 

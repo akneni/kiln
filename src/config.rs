@@ -107,6 +107,7 @@ impl Config {
             language: "c".to_string(),
         };
 
+        // No posibility of this failing
         let mut build_options = BuildOptions::from(&project)
             .unwrap();
 

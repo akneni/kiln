@@ -20,29 +20,36 @@ use valgrind::VgOutput;
 
 
 fn temp() {
-    let mut code = fs::read_to_string("example.c")
+    let mut code = fs::read_to_string("test/example.c")
         .unwrap();
 
     code = lexer::clean_source_code(code);
     let tokens = lexer::tokenize(&code)
         .unwrap();
-    // for t in tokens{
+
+    // for t in &tokens {
     //     println!("{:?}", t);
     // }
 
-    let includes = lexer::get_includes(&tokens);
+    let includes = lexer::get_structs(&tokens);
 
+    
+    let mut header_s = "".to_string();
+    
     for inc in includes {
-        println!("{:?}\n\n", inc);
+        println!("{:?}\n", inc);
+
+        header_s.push_str(&lexer::Token::struct_tokens_to_string(inc));
+        header_s.push_str("\n\n");
     }
 
+    println!("{}", header_s);
 
     std::process::exit(0);
 }
 
 fn main() {
     // temp();
-
 
     let cli_args: cli::CliCommand;
     let raw_cli_args = std::env::args().collect::<Vec<String>>();
@@ -116,8 +123,15 @@ fn main() {
             }
             let config = config.unwrap();
 
-            handle_warnings(&config).unwrap();
-            handle_build(&profile, &config).unwrap();
+            if let Err(e) = handle_warnings(&config) {
+                eprintln!("An error occured during static analysis:\n{}", e);
+                process::exit(1);
+            }
+            if let Err(e) = handle_build(&profile, &config) {
+                eprintln!("An error occured while building the project:\n{}", e);
+                process::exit(1);
+            }
+
         }
         cli::Commands::Run { profile, args, valgrind } => {
             if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
@@ -126,9 +140,12 @@ fn main() {
             }
             let config = config.unwrap();
 
-            handle_warnings(&config).unwrap();
+            if let Err(e) = handle_warnings(&config) {
+                eprintln!("An error occured during static analysis:\n{}", e);
+                process::exit(1);
+            }
             if let Err(e) = handle_build(&profile, &config) {
-                println!("Compilation Failed: {}", e);
+                eprintln!("An error occured while building the project:\n{}", e);
                 process::exit(1);
             }
             
@@ -161,7 +178,11 @@ fn main() {
             }
             else {
                 // If use_valgrind = false
-                handle_execution(&profile, &config, &cwd, &args).unwrap();
+                let err = handle_execution(&profile, &config, &cwd, &args);
+                if let Err(e) = err {
+                    eprintln!("Code build sucessfully, but failed to execute:\n{}", e);
+                    process::exit(1);
+                }
             }
         }
         cli::Commands::GenHeaders => {
@@ -170,61 +191,16 @@ fn main() {
                 process::exit(1);
             }
             let config = config.unwrap();
+            if config.project.language != "c" {
+                println!("Unfortunately, generating header files is only avilalbe for C.");
+                println!("Stay tuned!! C++/CUDA support coming soon!");
+                process::exit(0);
+            }
 
-            let cwd = env::current_dir()
-                .unwrap();
-            let src_dir = cwd.join("src");
-            let inc_dir = cwd.join("include");
 
-            for file in fs::read_dir(src_dir).unwrap() {
-                if let Ok(file) = file {
-                    if file.file_name() == "main.c" {
-                        continue;
-                    }
-
-                    let mut code = fs::read_to_string(file.path())
-                        .unwrap();
-                    code = lexer::clean_source_code(code);
-                    let tokens = lexer::tokenize(&code)
-                        .unwrap();
-
-                    let fn_defs = lexer::get_fn_def(&tokens);
-                    let includes = lexer::get_includes(&tokens);
-
-                    let raw_name = file
-                        .file_name();
-                    let raw_name = raw_name
-                        .to_str()
-                        .unwrap()
-                        .rsplit_once(".")
-                        .unwrap()
-                        .0;
-
-                    let mut headers = String::new();
-
-                    headers.push_str(&format!("#ifndef {}_H\n", raw_name.to_uppercase()));
-                    headers.push_str(&format!("#define {}_H\n\n", raw_name.to_uppercase()));
-
-                    for &inc in &includes {
-                        let s = lexer::Token::tokens_to_string(inc);
-                        headers.push_str(&s);
-                        headers.push('\n');
-                    }
-                    headers.push('\n');
-                    for &func in &fn_defs {
-                        let s = lexer::Token::tokens_to_string(func);
-                        headers.push_str(&s);
-                        headers.push_str(";\n");
-                    }
-                    headers.push('\n');
-                    headers.push_str(&format!("#endif // {}_H", raw_name.to_uppercase()));
-
-                    let header_name = format!("{}.h", raw_name);
-
-                    fs::write(inc_dir.join(header_name), headers)
-                        .unwrap();
-                
-                }   
+            if let Err(err) = handle_headers(&config) {
+                println!("An error occured while generating header files:\n{}", err);
+                process::exit(1);
             }
         }
     }
@@ -275,9 +251,13 @@ fn handle_build(profile: &str, config: &Config) -> Result<()> {
     let link_lib = build_sys::link_lib(&cwd);
     let opt_flags = build_sys::opt_flags(&profile, config).unwrap();
 
-    let compilation_cmd =
-        build_sys::full_compilation_cmd(config, &profile, &link_file, &link_lib, &opt_flags)
-            .unwrap();
+    let compilation_cmd = build_sys::full_compilation_cmd(
+        config, 
+        &profile, 
+        &link_file, 
+        &link_lib, 
+        &opt_flags
+    )?;
 
     let child = process::Command::new(&compilation_cmd[0])
         .args(&compilation_cmd[1..])
@@ -302,8 +282,7 @@ fn handle_execution(
     passthough_args: &[String]
 ) -> Result<()> {
     if !profile.starts_with("--") {
-        println!("Error: profile must start with `--`");
-        process::exit(1);
+        return Err(anyhow!("Error: profile must start with `--`"));
     }
 
     let bin_path = project_dir
@@ -312,8 +291,7 @@ fn handle_execution(
         .join(&config.project.name);
 
     if !bin_path.exists() {
-        eprintln!("Binary does not exist.");
-        process::exit(1);
+        return Err(anyhow!("Binary {:?} does not exist", bin_path));
     }
 
     let output = process::Command::new(&bin_path)
@@ -329,5 +307,71 @@ fn handle_execution(
         process::exit(code);
     }
 
+    Ok(())
+}
+
+fn handle_headers(config: &Config) -> Result<()> {
+    let cwd = env::current_dir()?;
+    let src_dir = config.get_src_dir();
+    let inc_dir = config.get_include_dir();
+
+    let src_dir = cwd.join(src_dir);
+    let inc_dir = cwd.join(inc_dir);
+
+    for file in fs::read_dir(src_dir).unwrap() {
+        if let Ok(file) = file {
+            let raw_name = file
+                .file_name();
+            let raw_name = raw_name
+                .to_str()
+                .unwrap()
+                .rsplit_once(".")
+                .unwrap()
+                .0;
+            if raw_name == "main" {
+                continue;
+            }
+            let header_name = format!("{}.h", raw_name);
+
+            let mut code = fs::read_to_string(file.path())?;
+            code = lexer::clean_source_code(code);
+            let tokens = lexer::tokenize(&code)?;
+
+            let mut code_h = fs::read_to_string(inc_dir.join(&header_name))
+                .unwrap_or("".to_string());
+            code_h = lexer::clean_source_code(code_h);                    
+            let tokens_h = lexer::tokenize(&code_h)?;
+
+            let fn_defs = lexer::get_fn_def(&tokens);
+            let includes = lexer::get_includes(&tokens);
+            let structs = lexer::get_structs(&tokens_h);
+
+
+            let mut headers = String::new();
+
+            headers.push_str(&format!("#ifndef {}_H\n", raw_name.to_uppercase()));
+            headers.push_str(&format!("#define {}_H\n\n", raw_name.to_uppercase()));
+
+            for &inc in &includes {
+                let s = lexer::Token::tokens_to_string(inc);
+                headers.push_str(&s);
+                headers.push('\n');
+            }
+            headers.push('\n');
+            for &struc in &structs {
+                headers.push_str(&lexer::Token::struct_tokens_to_string(struc).trim());
+                headers.push_str("\n\n");
+            }
+            for &func in &fn_defs {
+                let s = lexer::Token::tokens_to_string(func);
+                headers.push_str(&s);
+                headers.push_str(";\n");
+            }
+            headers.push('\n');
+            headers.push_str(&format!("#endif // {}_H", raw_name.to_uppercase()));
+
+            fs::write(inc_dir.join(header_name), headers)?;
+        }
+    }
     Ok(())
 }

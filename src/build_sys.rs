@@ -26,7 +26,7 @@ pub fn create_project(path: &Path, lang: Language) -> Result<()> {
     fs::write(&toml_path, config_str)?;
 
     let source_dir = path.join("src");
-    fs::create_dir(&path.join("src")).unwrap();
+    fs::create_dir(&path.join("src"))?;
 
     match lang {
         Language::C => {

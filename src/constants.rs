@@ -3,7 +3,7 @@ use std::{env::consts::OS, path::{Path, PathBuf}};
 use once_cell::sync::Lazy;
 use colored::*;
 
-pub const CONFIG_FILE: &str = "TrufC.toml";
+pub const CONFIG_FILE: &str = "Kiln.toml";
 pub const VALGRIND_OUT: &str = "trufc-valgrind-output.xml";
 
 pub static DATA_DIR: Lazy<PathBuf> = Lazy::new(|| {

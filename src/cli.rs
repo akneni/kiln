@@ -1,4 +1,4 @@
-use crate::utils::{self, Language};
+use crate::{utils::{self, Language}, valgrind};
 
 use clap::{Parser, Subcommand};
 
@@ -32,15 +32,13 @@ pub enum Commands {
     Run {
         profile: String,
         args: Vec<String>,
+        valgrind: bool,
     },
-    AiOpt {
-        #[command(subcommand)]
-        command: AiOptCommand
-    }
+    GenHeaders,
 }
 
 impl Commands {
-    pub fn new(variant: &str, profile: &str, args: Vec<String>) -> Self {
+    pub fn new(variant: &str, profile: &str, args: Vec<String>, valgrind: bool) -> Self {
         match variant {
             "build" => Self::Build {
                 profile: profile.to_string(),
@@ -48,6 +46,7 @@ impl Commands {
             "run" => Self::Run {
                 profile: profile.to_string(),
                 args,
+                valgrind,
             },
             _ => panic!("Parameter `variant` must be one of 'build' or 'run'"),
         }
@@ -64,16 +63,6 @@ fn parse_language(arg: &str) -> Result<Language, &str> {
             std::process::exit(1);
         }
     }
-}
-
-
-#[derive(Subcommand, Debug)]
-pub enum AiOptCommand {
-    ListModels,
-    Pull {
-        model: String
-    },
-    Optimize,
 }
 
 

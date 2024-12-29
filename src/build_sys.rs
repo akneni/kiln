@@ -5,13 +5,12 @@ use crate::{config::Config, constants::CONFIG_FILE};
 use anyhow::{anyhow, Result};
 use std::{
     fs,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 pub fn create_project(path: &Path, lang: Language) -> Result<()> {
-    let mut path_b = PathBuf::from(path);
-    path_b.push(CONFIG_FILE);
-    if path_b.exists() {
+    let toml_path = path.join(CONFIG_FILE);
+    if toml_path.exists() {
         return Err(anyhow!("directory is already a TrufC project."));
     }
 
@@ -24,25 +23,22 @@ pub fn create_project(path: &Path, lang: Language) -> Result<()> {
 
     let config_str = toml::to_string(&config)?;
 
-    fs::write(&path_b, config_str)?;
+    fs::write(&toml_path, config_str)?;
 
-    path_b.pop();
-    path_b.push("src");
-
-    fs::create_dir(&path_b).unwrap();
+    let source_dir = path.join("src");
+    fs::create_dir(&path.join("src")).unwrap();
 
     match lang {
         Language::C => {
-            path_b.push("main.c");
-            let starter_code = "#include<stdio.h>\n\nint main() {\n\tprintf(\"Welcome to Truffle!\\n\");\n\treturn 0;\n}";
-            fs::write(&path_b, starter_code)?;
+            let starter_code = "#include<stdio.h>\n\nint main() {\n\tprintf(\"Welcome to Kiln!\\n\");\n\treturn 0;\n}";
+            fs::write(&source_dir.join("main.c"), starter_code)?;
         }
         Language::Cpp => {
-            path_b.push("main.cpp");
-            let starter_code = "#include<iostream>\n\nint main() {\n\tstd::cout << \"Welcome to Truffle!\\n\";\n\treturn 0;\n}";
-            fs::write(&path_b, starter_code)?;
+            let starter_code = "#include<iostream>\n\nint main() {\n\tstd::cout << \"Welcome to Kiln!\\n\";\n\treturn 0;\n}";
+            fs::write(&source_dir.join("main.cpp"), starter_code)?;
         }
     }
+    fs::create_dir(path.join("include"))?;
 
     Ok(())
 }

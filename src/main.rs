@@ -1,4 +1,5 @@
-mod ai_opt;
+#![allow(unused)]
+
 mod build_sys;
 mod cli;
 mod config;
@@ -6,16 +7,43 @@ mod constants;
 mod safety;
 mod utils;
 mod valgrind;
+mod lexer;
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use config::Config;
 use constants::{CONFIG_FILE, SEPETATOR};
-use std::{env, fs, process, path::Path};
+use lexer::{clean_source_code, Token};
+use std::{env, fs, io::{stdout, Write}, path::Path, process};
 use utils::Language;
 use valgrind::VgOutput;
 
+
+fn temp() {
+    let mut code = fs::read_to_string("example.c")
+        .unwrap();
+
+    code = lexer::clean_source_code(code);
+    let tokens = lexer::tokenize(&code)
+        .unwrap();
+    // for t in tokens{
+    //     println!("{:?}", t);
+    // }
+
+    let includes = lexer::get_includes(&tokens);
+
+    for inc in includes {
+        println!("{:?}\n\n", inc);
+    }
+
+
+    std::process::exit(0);
+}
+
 fn main() {
+    // temp();
+
+
     let cli_args: cli::CliCommand;
     let raw_cli_args = std::env::args().collect::<Vec<String>>();
     if raw_cli_args.len() < 2 {
@@ -40,9 +68,9 @@ fn main() {
                 process::exit(1);
             }
         }
-
+        let valgrind = raw_cli_args.contains(&"--valgrind".to_string());
         cli_args = cli::CliCommand {
-            command: cli::Commands::new(&raw_cli_args[1], &profile, args),
+            command: cli::Commands::new(&raw_cli_args[1], &profile, args, valgrind),
         }
     } else {
         cli_args = cli::CliCommand::parse();
@@ -86,7 +114,7 @@ fn main() {
             handle_warnings(&config).unwrap();
             handle_build(&profile, &config).unwrap();
         }
-        cli::Commands::Run { profile, args } => {
+        cli::Commands::Run { profile, args, valgrind } => {
             if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
                 println!("{}", e);
                 process::exit(1);
@@ -99,7 +127,7 @@ fn main() {
                 process::exit(1);
             }
             
-            if config.project.use_valgrind && profile == "--dev" {
+            if valgrind {
                 let exe_path = cwd
                     .join("build")
                     .join(&profile[2..])
@@ -131,8 +159,71 @@ fn main() {
                 handle_execution(&profile, &config, &cwd, &args).unwrap();
             }
         }
-        cli::Commands::AiOpt { command } => {
-            ai_opt::handle_cli(command).unwrap();
+        cli::Commands::GenHeaders => {
+            if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
+                println!("{}", e);
+                process::exit(1);
+            }
+            let config = config.unwrap();
+
+            let cwd = env::current_dir()
+                .unwrap();
+            let src_dir = cwd.join("src");
+            let inc_dir = cwd.join("include");
+
+            for file in fs::read_dir(src_dir).unwrap() {
+                if let Ok(file) = file {
+                    if file.file_name() == "main.c" {
+                        continue;
+                    }
+
+                    let mut code = fs::read_to_string(file.path())
+                        .unwrap();
+                    code = lexer::clean_source_code(code);
+                    let tokens = lexer::tokenize(&code)
+                        .unwrap();
+                    #[cfg(debug_assertions)] println!("Completed Tokenization");
+
+                    let fn_defs = lexer::get_fn_def(&tokens);
+                    #[cfg(debug_assertions)] println!("Extracted function def");
+
+                    let includes = lexer::get_includes(&tokens);
+
+                    let raw_name = file
+                        .file_name();
+                    let raw_name = raw_name
+                        .to_str()
+                        .unwrap()
+                        .rsplit_once(".")
+                        .unwrap()
+                        .0;
+
+                    let mut headers = String::new();
+
+                    headers.push_str(&format!("#ifndef {}_H\n", raw_name.to_uppercase()));
+                    headers.push_str(&format!("#define {}_H\n\n", raw_name.to_uppercase()));
+
+                    for &inc in &includes {
+                        let s = lexer::Token::tokens_to_string(inc);
+                        headers.push_str(&s);
+                        headers.push('\n');
+                    }
+                    headers.push('\n');
+                    for &func in &fn_defs {
+                        let s = lexer::Token::tokens_to_string(func);
+                        headers.push_str(&s);
+                        headers.push_str(";\n");
+                    }
+                    headers.push('\n');
+                    headers.push_str(&format!("#endif // {}_H", raw_name.to_uppercase()));
+
+                    let header_name = format!("{}.h", raw_name);
+
+                    fs::write(inc_dir.join(header_name), headers)
+                        .unwrap();
+                
+                }   
+            }
         }
     }
 }

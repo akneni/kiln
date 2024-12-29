@@ -8,9 +8,46 @@ use toml;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub project: Project,
-    pub compiler: Compiler,
+    pub build_options: BuildOptions,
     pub profile: HashMap<String, Profile>,
 }
+
+impl Config {
+    pub fn main_filepath(&self) -> String {
+        let filename = match self.project.name.as_str() {
+            "c" => "main.c".to_string(),
+            "cpp" => "main.cpp".to_string(),
+            "cuda" => "main.cu".to_string(),
+            _ => "main.unknown".to_string(),
+        };
+        format!("{}/{}", self.get_src_dir(), filename)
+    }
+
+    pub fn get_compiler_path(&self) -> String {
+        let default = match self.project.language.as_str() {
+                "c" => "gcc".to_string(),
+                "cpp" => "g++".to_string(),
+                "cuda" => "nvcc".to_string(),
+                _ => panic!("Invalid config state (this should never happen"),
+        };
+        self.build_options.compiler_path.clone().unwrap_or(default)
+    }
+
+    pub fn get_src_dir(&self) -> String {
+        let default = "src".to_string();
+        self.build_options.src_dir.clone().unwrap_or(default)
+    }
+
+    pub fn get_include_dir(&self) -> String {
+        let default = "include".to_string();
+        self.build_options.include_dir.clone().unwrap_or(default)
+    }
+
+    pub fn get_kiln_static_analysis(&self) -> bool {
+        self.build_options.kiln_static_analysis.unwrap_or(true)
+    }
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
@@ -20,24 +57,40 @@ pub struct Project {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Compiler {
-    pub c: CompilerDetail,
-    pub cpp: CompilerDetail,
+pub struct BuildOptions {
+    pub standard: String,
+    pub compiler_path: Option<String>,
+    pub src_dir: Option<String>,
+    pub include_dir: Option<String>,
+    pub kiln_static_analysis: Option<bool>,
 }
 
-impl Compiler {
-    #![allow(unused)]
-    pub fn from(ver: &CompilerVersions) {
-        todo!("implement this");
+impl BuildOptions {
+    fn from(project: &Project) -> Result<Self> {
+        let mut b_config = BuildOptions {
+            standard: "c17".to_string(),
+            compiler_path: None,
+            src_dir: None,
+            include_dir: None,
+            kiln_static_analysis: None,
+        };
+
+        match project.language.as_str() {
+            "c" => {
+                b_config.standard = "c17".to_string();
+            },
+            "cpp" => {
+                b_config.standard = "c++17".to_string();
+            },
+            "cuda" => {
+                b_config.standard = "c++17".to_string();
+            },
+            _ => return Err(anyhow!("language {} not supported", project.language)),
+        }
+        Ok(b_config)
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompilerDetail {
-    pub name: String,
-    pub version: String,
-    pub standard: String,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
@@ -54,18 +107,8 @@ impl Config {
             language: "c".to_string(),
         };
 
-        let compiler = Compiler {
-            c: CompilerDetail {
-                name: "gcc".to_string(),
-                version: "11.4.0".to_string(),
-                standard: "c17".to_string(),
-            },
-            cpp: CompilerDetail {
-                name: "g++".to_string(),
-                version: "11.4.0".to_string(),
-                standard: "c++17".to_string(),
-            },
-        };
+        let mut build_options = BuildOptions::from(&project)
+            .unwrap();
 
         let mut profile = HashMap::new();
 
@@ -93,7 +136,7 @@ impl Config {
 
         Config {
             project,
-            compiler,
+            build_options,
             profile,
         }
     }

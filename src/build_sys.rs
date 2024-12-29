@@ -113,18 +113,9 @@ pub fn full_compilation_cmd(
     link_lib: &Vec<String>,
     flags: &Vec<String>,
 ) -> Result<Vec<String>> {
-    let compiler: &str;
-    let standard: &str;
 
-    if link_file.contains(&"src/main.cpp".to_string()) {
-        compiler = &config.compiler.cpp.name;
-        standard = &config.compiler.cpp.standard;
-    } else if link_file.contains(&"src/main.c".to_string()) {
-        compiler = &config.compiler.c.name;
-        standard = &config.compiler.c.standard;
-    } else {
-        return Err(anyhow!("No `src/main.c` or `src/main.cpp` file found"));
-    }
+    let compiler = config.get_compiler_path();
+    let standard = &config.build_options.standard;
 
     let mut command = vec![compiler.to_string(), format!("-std={}", standard)];
 

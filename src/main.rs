@@ -52,9 +52,14 @@ fn main() {
     } else if raw_cli_args[1] == "run" || raw_cli_args[1] == "build" {
         let mut profile = "--dev".to_string();
         let mut args = vec![];
-        if raw_cli_args.len() >= 3 && raw_cli_args[2].starts_with("--") && raw_cli_args[2].len() > 2
-        {
+        if (
+            raw_cli_args.len() >= 3 && 
+            raw_cli_args[2].starts_with("--") && 
+            raw_cli_args[2].len() > 2 &&
+            raw_cli_args[2] != "--valgrind"
+        ) {
             // Extracts compilation profile
+
             profile = raw_cli_args[2].clone();
         }
         if let Some(idx) = raw_cli_args.iter().position(|i| i == "--") {
@@ -182,11 +187,8 @@ fn main() {
                     code = lexer::clean_source_code(code);
                     let tokens = lexer::tokenize(&code)
                         .unwrap();
-                    #[cfg(debug_assertions)] println!("Completed Tokenization");
 
                     let fn_defs = lexer::get_fn_def(&tokens);
-                    #[cfg(debug_assertions)] println!("Extracted function def");
-
                     let includes = lexer::get_includes(&tokens);
 
                     let raw_name = file
@@ -230,11 +232,15 @@ fn main() {
 
 /// Returns true if there were warnings and false if there was no warnings.
 fn handle_warnings(config: &Config) -> Result<Vec<safety::Warning>> {
+    if !config.get_kiln_static_analysis() {
+        return Ok(vec![])
+    }
+
     let warnings = safety::check_files(&config.project.language)?;
 
     for w in &warnings {
         utils::print_warning(
-            "TrufC",
+            "Kiln",
             &w.filename,
             &format!("{}", w.line),
             &format!("{:?}", w.warning_type),

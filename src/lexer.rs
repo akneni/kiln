@@ -133,13 +133,6 @@ pub fn clean_source_code(code: String) -> String {
 pub fn tokenize(code: &str) -> Result<Vec<Token>> {
     let code_bytes = code.as_bytes();
     let mut tokens = Vec::with_capacity(4096);
-
-    #[cfg(debug_assertions)] {
-        let forbidden_strs = ["\n\n", "\t"];
-        if forbidden_strs.iter().any(|fs| code.contains(fs)) {
-            panic!("[fn tokenize] Precondition not met: Invalid whitespace characters");
-        }
-    }
     
     let mut idx: usize = 0;
     while (idx < code.len()) {
@@ -432,6 +425,29 @@ pub fn get_includes<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
 
     includes
 }
+
+pub fn get_fn_calls<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
+    let mut includes = vec![];
+    
+    let mut idx: usize = 0;
+    while idx < tokens.len() {
+        if let Token::HashTag = tokens[idx] {
+            let mut end = idx;
+            skip_to_oneof(
+                tokens, 
+                &[Token::GreaterThan, Token::Literal("-")],
+                &mut end
+            );
+            includes.push(&tokens[idx..(end+1)]);
+            idx = end;
+            continue;
+        }
+        idx += 1;
+    }
+
+    includes
+}
+
 
 fn skip_to(tokens: &[Token], target: Token, idx: &mut usize) {
     for i in (*idx + 1)..tokens.len() {

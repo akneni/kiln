@@ -1,7 +1,7 @@
 use std::{collections::HashMap, env, fmt::Debug, fs, process::{self, Command}, sync::{Arc, Mutex}};
 use anyhow::{anyhow, Result};
 
-use crate::{constants::VALGRIND_OUT, utils, valgrind::VgOutput};
+use crate::{constants::VALGRIND_OUT, utils, valgrind::VgOutput, lexer};
 
 /// This checks if unsafe functions exist within a line using general string parsing
 /// This is messy and prone to false positives.
@@ -129,19 +129,35 @@ pub fn check_files_threaded(source_type: &str, warn_buff: Arc<Mutex<Vec<Warning>
 fn scan_file(filename: &str, source_code: &str, func_map: &FunctionMap) ->Vec<Warning> {
     let mut warnings = vec![];
 
-    let source_code = source_code
-        .split("\n");
+    for (line_num, line) in source_code.split('\n').enumerate() {
+        if line.trim().len() == 0 {
+            continue;
+        }
 
-    for (i, line) in source_code.enumerate() {
-        let unsafe_funcs = func_map.line_contains_unsafe(line);
-        for (unsafe_f, safe_f) in unsafe_funcs {
-            let warning = Warning {
-                msg: format!("Function {}() is unsafe, consider using {}() instead", unsafe_f, safe_f),
-                filename: filename.to_string(),
-                line: i,
-                warning_type: WarningType::UnsafeFunction,
-            };
-            warnings.push(warning);
+        let tokens = match lexer::tokenize(line) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        if tokens.len() < 3 {
+            continue;
+        }
+
+        for i in 0..(tokens.len()-1) {
+            if let lexer::Token::Object(obj) = tokens[i] {
+                if tokens[i+1] != lexer::Token::OpenParen {
+                    continue;
+                }
+                if let Some(safe_fn) = func_map.map.get(obj) {
+                    let warning = Warning {
+                        warning_type: WarningType::UnsafeFunction,
+                        msg: format!("{}() is an unsafe function. Consuder using {}() instead", obj, safe_fn),
+                        filename: filename.to_string(),
+                        line: line_num + 1,
+                    };
+                    
+                    warnings.push(warning);
+                }
+            }
         }
     }
 

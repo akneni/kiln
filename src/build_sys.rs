@@ -114,9 +114,12 @@ pub fn full_compilation_cmd(
 ) -> Result<Vec<String>> {
 
     let compiler = config.get_compiler_path();
-    let standard = &config.build_options.standard;
+    let standard = config.get_standard();
 
-    let mut command = vec![compiler.to_string(), format!("-std={}", standard)];
+    let mut command = vec![compiler.to_string()];
+    if let Some(standard) = standard {
+        command.push(format!("-std={}", standard));
+    }
 
     command.extend_from_slice(flags);
 

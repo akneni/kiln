@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(name = "Kiln")]
-#[command(version = "0.1.1")]
+#[command(version = "0.1.2")]
 #[command(about = "A modern build system for C/C++", long_about = None)]
 pub struct CliCommand {
     #[command(subcommand)]

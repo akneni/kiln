@@ -154,6 +154,7 @@ fn main() {
                     .join("build")
                     .join(&profile[2..])
                     .join(config.project.name);
+
     
                 let bin = exe_path.to_str().unwrap();
                 let valgrind_out = match safety::exec_w_valgrind(bin, &args) {
@@ -258,6 +259,10 @@ fn handle_build(profile: &str, config: &Config) -> Result<()> {
         &link_lib, 
         &opt_flags
     )?;
+
+    #[cfg(debug_assertions)] {
+        println!("{}", compilation_cmd.join(" "));
+    }
 
     let child = process::Command::new(&compilation_cmd[0])
         .args(&compilation_cmd[1..])

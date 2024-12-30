@@ -24,13 +24,7 @@ impl Config {
     }
 
     pub fn get_compiler_path(&self) -> String {
-        let default = match self.project.language.as_str() {
-                "c" => "gcc".to_string(),
-                "cpp" => "g++".to_string(),
-                "cuda" => "nvcc".to_string(),
-                _ => panic!("Invalid config state (this should never happen"),
-        };
-        self.build_options.compiler_path.clone().unwrap_or(default)
+        self.build_options.compiler_path.clone()
     }
 
     pub fn get_src_dir(&self) -> String {
@@ -46,6 +40,10 @@ impl Config {
     pub fn get_kiln_static_analysis(&self) -> bool {
         self.build_options.kiln_static_analysis.unwrap_or(true)
     }
+
+    pub fn get_standard(&self) -> Option<String> {
+        self.build_options.standard.clone()
+    }
 }
 
 
@@ -58,18 +56,18 @@ pub struct Project {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildOptions {
-    pub standard: String,
-    pub compiler_path: Option<String>,
+    pub compiler_path: String,
     pub src_dir: Option<String>,
     pub include_dir: Option<String>,
+    pub standard: Option<String>,
     pub kiln_static_analysis: Option<bool>,
 }
 
 impl BuildOptions {
     fn from(project: &Project) -> Result<Self> {
         let mut b_config = BuildOptions {
-            standard: "c17".to_string(),
-            compiler_path: None,
+            standard: None,
+            compiler_path: "gcc".to_string(),
             src_dir: None,
             include_dir: None,
             kiln_static_analysis: None,
@@ -77,14 +75,14 @@ impl BuildOptions {
 
         match project.language.as_str() {
             "c" => {
-                b_config.standard = "c17".to_string();
+                b_config.compiler_path = "gcc".to_string();
             },
             "cpp" => {
-                b_config.standard = "c++17".to_string();
+                b_config.compiler_path = "g++".to_string();
             },
             "cuda" => {
-                b_config.standard = "c++17".to_string();
-            },
+                b_config.compiler_path = "nvcc".to_string();
+            }
             _ => return Err(anyhow!("language {} not supported", project.language)),
         }
         Ok(b_config)

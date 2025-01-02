@@ -150,6 +150,10 @@ fn main() {
             }
             
             if valgrind {
+                if env::consts::OS != "linux" {
+                    eprintln!("Valgrind is only supported for linux.");
+                    std::process::exit(1);
+                }
                 let exe_path = cwd
                     .join("build")
                     .join(&profile[2..])

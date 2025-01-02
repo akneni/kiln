@@ -8,15 +8,19 @@ If you're familiar with Rust's Cargo or Python's Poetry, you'll feel right at ho
 - **Convenience**: Never write a makefile or link 20 files in a single compilation command again.
 - **Security**: From better compiler flag defaults, to static analysis and valgrind integration, Kiln can help you write safer C/C++ code. 
 - **Productivity**: Spend more time writing code and let Kiln take care of generating header files and linking libraries. 
----
+
+## Build from Source
+- Kiln is only officially supported for Linux, but should also work mostly fine on Mac OS and Windows. 
+- In order to build from source, install the rust tool chain at https://rustup.rs/. 
+- Clone this repo, navigate into the project directory, and run `cargo build --release`
+- Move the compiled binary into `/usr/local/bin` (Linux/Mac), or add the path to the `./target/release` folder to PATH (Windows). 
 
 ## Quick Start
-### Creating a New Project
-To create a new project directory and set up the build environment:
+- To create a new project directory and set up the build environment:
 ```bash
 kiln new my_project
 ```
-This will create a folder `my_project` with the following structure:
+- This will create a folder `my_project` with the following structure:
 ```
 my_project/
 ├── src/
@@ -27,8 +31,7 @@ my_project/
 ├── Kiln.toml
 ```
 
-### Building Your Project
-From the root of your project directory, run:
+- **Building your Project:** From the root of your project directory, run:
 ```bash
 kiln build
 ```

@@ -16,7 +16,7 @@ If you're familiar with Rust's Cargo or Python's Poetry, you'll feel right at ho
 - Move the compiled binary into `/usr/local/bin` (Linux/Mac), or add the path to the `./target/release` folder to PATH (Windows). 
 
 ## Quick Start
-- To create a new project directory and set up the build environment:
+- **Creating a new Project:** To create a new project directory and set up the build environment:
 ```bash
 kiln new my_project
 ```
@@ -30,7 +30,6 @@ my_project/
 │   └── utils.h
 ├── Kiln.toml
 ```
-
 - **Building your Project:** From the root of your project directory, run:
 ```bash
 kiln build
@@ -40,22 +39,19 @@ Kiln will:
 - Link necessary libraries.
 - Output the compiled binary to the `build/` directory.
 
-### Running Your Project
-To compile and execute your project:
+- **Running your Project:** To compile and execute your project:
 ```bash
 kiln run
 ```
 
-### Valgrind Integration
-Execute your project with valgrind and get info about memory corruption issues. 
-```bash
-kiln run --valgrind
-```
-
-### Generating Header Files
-Automatically create/update your header files (for C only, C++ & CUDA are on the roadmap)
+- **Generating Headerfiles:** Automatically create/update your header files (for C only, C++ & CUDA are on the roadmap)
 ```bash
 kiln gen-headers
+```
+
+**Valgrind Integration:** Execute your project with valgrind and get info about memory corruption issues. 
+```bash
+kiln run --valgrind
 ```
 
 ---

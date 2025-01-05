@@ -79,6 +79,9 @@ pub fn link_lib(path: &Path) -> Vec<String> {
         ("<GL/gl.h>", "-lGL"),              // OpenGL library
         ("<GL/glut.h>", "-lglut"),          // GLUT library for OpenGL
         ("<X11/Xlib.h>", "-lX11"),          // X11 library for X Window System
+        ("<immintrin.h>", "-mavx"),         // AVX instructions
+        ("<liburing.h>", "-luring"),        // liburing library for asynchronous I/O
+        ("<arm_neon.h>", "-mfpu=neon"),     // NEON support for ARM
     ];
 
     let includes = utils::extract_include_statements(path);

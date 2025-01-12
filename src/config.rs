@@ -96,7 +96,7 @@ pub struct Profile {
 }
 
 impl Config {
-    const REQUIRED_PROFILES: [&str; 2] = ["dev", "release"];
+    const REQUIRED_PROFILES: [&str; 2] = ["debug", "release"];
 
     pub fn new(proj_name: &str) -> Self {
         let project = Project {
@@ -112,7 +112,7 @@ impl Config {
         let mut profile = HashMap::new();
 
         profile.insert(
-            "dev".to_string(),
+            "debug".to_string(),
             Profile {
                 flags: vec![
                     "-g".to_string(),

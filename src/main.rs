@@ -57,7 +57,7 @@ fn main() {
         // Let the program fail and have Clap display it's help message
         cli_args = cli::CliCommand::parse();
     } else if raw_cli_args[1] == "run" || raw_cli_args[1] == "build" {
-        let mut profile = "--dev".to_string();
+        let mut profile = "--debug".to_string();
         let mut args = vec![];
         if (
             raw_cli_args.len() >= 3 && 

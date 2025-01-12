@@ -38,32 +38,6 @@ impl FunctionMap {
 
         Self {map}
     }
-
-    fn line_contains_unsafe<'a>(&'a self, line: &str) -> Vec<(&'a str, &'a str)> {
-        let mut unsafe_funcs = vec![];
-        for (k, v) in self.map.iter() {
-            if Self::line_contains_fn(line, k) {
-                unsafe_funcs.push((k.as_str(), v.as_str()));
-            }
-        }
-        unsafe_funcs
-    }
-
-    #[inline]
-    fn line_contains_fn(line: &str, func: &str) -> bool {
-        let line_bytes = line.as_bytes();
-        if let Some(mut idx) = line.find(func) {
-            idx += func.len();
-            if line_bytes[idx] == '(' as u8 {
-                return true;
-            }
-            else if line_bytes[idx] != ' ' as u8 {
-                return false;
-            }
-            
-        }
-        false
-    }
 }
 
 #[derive(Debug)]

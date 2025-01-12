@@ -133,7 +133,6 @@ impl<'a> Token<'a> {
 pub fn clean_source_code(code: String) -> String {
     let mut cleaned = String::with_capacity(code.len());
 
-    let mut chars = code.chars().peekable();
     let mut in_block_comment = false;  // whether we're inside /* ... */
 
     for line in code.split("\n") {
@@ -143,7 +142,6 @@ pub fn clean_source_code(code: String) -> String {
         }
         if in_block_comment {
             if let Some(bc_idx) = line.find("*/") {
-                in_block_comment = true;
                 let line = line[bc_idx..].trim();
                 in_block_comment = false;
                 let comment_idx = line.find("//").unwrap_or(line.len());
@@ -186,7 +184,7 @@ pub fn tokenize(code: &str) -> Result<Vec<Token>> {
     let mut tokens = Vec::with_capacity(4096);
     
     let mut idx: usize = 0;
-    while (idx < code.len()) {
+    while idx < code.len() {
         if code_bytes[idx] == ' ' as u8 || code_bytes[idx] == '\t' as u8 {
             idx += 1;
             continue;
@@ -232,7 +230,7 @@ fn find_len_object(code_bytes: &[u8], mut curr_idx: usize) -> usize {
     while curr_idx < code_bytes.len() {
         let ascii_char = code_bytes[curr_idx] as usize;
         if ascii_char < TOKEN_MAPPING.len() {
-            if (TOKEN_MAPPING[ascii_char].is_some() || ascii_char == ' ' as usize) {
+            if TOKEN_MAPPING[ascii_char].is_some() || ascii_char == ' ' as usize {
                 return curr_idx;
             }
         }
@@ -514,10 +512,10 @@ pub fn get_structs<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                 idx += 1;
                 continue;
             }
-            if (
+            if 
                 tokens[end-2] != Token::CloseCurlyBrace &&
                 std::mem::discriminant(&tokens[end-2]) != std::mem::discriminant(&Token::Object("_"))
-            ) {
+            {
                 idx += 1;
                 continue;
             }

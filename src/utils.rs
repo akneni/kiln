@@ -132,6 +132,7 @@ pub fn extract_include_statements(path: &Path) -> Vec<String> {
     includes.into_iter().collect()
 }
 
+#[allow(unused)]
 pub fn expand_user(path: &str) -> String {
     if path.starts_with("~/") {
         if let Some(home_dir) = std::env::var_os("HOME") {

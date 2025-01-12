@@ -1,4 +1,3 @@
-use crate::utils::CompilerVersions;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
@@ -13,6 +12,8 @@ pub struct Config {
 }
 
 impl Config {
+
+    #[allow(unused)]
     pub fn main_filepath(&self) -> String {
         let filename = match self.project.name.as_str() {
             "c" => "main.c".to_string(),
@@ -106,7 +107,7 @@ impl Config {
         };
 
         // No posibility of this failing
-        let mut build_options = BuildOptions::from(&project)
+        let build_options = BuildOptions::from(&project)
             .unwrap();
 
         let mut profile = HashMap::new();
@@ -149,6 +150,7 @@ impl Config {
         Ok(config)
     }
 
+    #[allow(unused)]
     pub fn to_disk(&self, path: &Path) {
         let s = toml::to_string(&self).unwrap();
         fs::write(path, s).unwrap();

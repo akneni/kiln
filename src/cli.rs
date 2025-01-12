@@ -1,4 +1,4 @@
-use crate::{utils::{self, Language}, valgrind};
+use crate::utils::{self, Language};
 
 use clap::{Parser, Subcommand};
 

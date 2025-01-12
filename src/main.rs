@@ -1,4 +1,3 @@
-#![allow(unused)]
 
 mod build_sys;
 mod cli;
@@ -13,43 +12,13 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use config::Config;
 use constants::{CONFIG_FILE, SEPETATOR};
-use lexer::{clean_source_code, Token};
-use std::{env, fs, io::{stdout, Write}, path::Path, process};
+use std::{env, fs, path::Path, process};
 use utils::Language;
 use valgrind::VgOutput;
 
 
-fn temp() {
-    let mut code = fs::read_to_string("test/example.c")
-        .unwrap();
-
-    code = lexer::clean_source_code(code);
-    let tokens = lexer::tokenize(&code)
-        .unwrap();
-
-    // for t in &tokens {
-    //     println!("{:?}", t);
-    // }
-
-    let includes = lexer::get_structs(&tokens);
-
-    
-    let mut header_s = "".to_string();
-    
-    for inc in includes {
-        println!("{:?}\n", inc);
-
-        header_s.push_str(&lexer::Token::struct_tokens_to_string(inc));
-        header_s.push_str("\n\n");
-    }
-
-    println!("{}", header_s);
-
-    std::process::exit(0);
-}
 
 fn main() {
-    // temp();
 
     let cli_args: cli::CliCommand;
     let raw_cli_args = std::env::args().collect::<Vec<String>>();
@@ -59,12 +28,12 @@ fn main() {
     } else if raw_cli_args[1] == "run" || raw_cli_args[1] == "build" {
         let mut profile = "--debug".to_string();
         let mut args = vec![];
-        if (
+        if 
             raw_cli_args.len() >= 3 && 
             raw_cli_args[2].starts_with("--") && 
             raw_cli_args[2].len() > 2 &&
             raw_cli_args[2] != "--valgrind"
-        ) {
+        {
             // Extracts compilation profile
 
             profile = raw_cli_args[2].clone();

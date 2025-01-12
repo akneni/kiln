@@ -12,18 +12,6 @@ pub struct Config {
 }
 
 impl Config {
-
-    #[allow(unused)]
-    pub fn main_filepath(&self) -> String {
-        let filename = match self.project.name.as_str() {
-            "c" => "main.c".to_string(),
-            "cpp" => "main.cpp".to_string(),
-            "cuda" => "main.cu".to_string(),
-            _ => "main.unknown".to_string(),
-        };
-        format!("{}/{}", self.get_src_dir(), filename)
-    }
-
     pub fn get_compiler_path(&self) -> String {
         self.build_options.compiler_path.clone()
     }
@@ -45,6 +33,22 @@ impl Config {
     pub fn get_standard(&self) -> Option<String> {
         self.build_options.standard.clone()
     }
+
+    pub fn get_main_filepath(&self) -> String {
+        if let Some(file) = self.build_options.main_filepath.as_ref() {
+            return file.clone();
+        }
+        let filename = match self.project.language.as_str() {
+            "c" => "main.c".to_string(),
+            "cpp" => "main.cpp".to_string(),
+            "cuda" => "main.cu".to_string(),
+            _ => {
+                eprintln!("`{}` is not a supported language", self.project.language);
+                std::process::exit(1);
+            }
+        };
+        format!("{}/{}", self.get_src_dir(), filename)
+    }
 }
 
 
@@ -57,21 +61,23 @@ pub struct Project {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildOptions {
-    pub compiler_path: String,
-    pub src_dir: Option<String>,
-    pub include_dir: Option<String>,
-    pub standard: Option<String>,
-    pub kiln_static_analysis: Option<bool>,
+    compiler_path: String,
+    src_dir: Option<String>,
+    include_dir: Option<String>,
+    standard: Option<String>,
+    kiln_static_analysis: Option<bool>,
+    main_filepath: Option<String>,
 }
 
 impl BuildOptions {
     fn from(project: &Project) -> Result<Self> {
         let mut b_config = BuildOptions {
             standard: None,
-            compiler_path: "gcc".to_string(),
+            compiler_path: "placeholder".to_string(),
             src_dir: None,
             include_dir: None,
             kiln_static_analysis: None,
+            main_filepath: None,
         };
 
         match project.language.as_str() {

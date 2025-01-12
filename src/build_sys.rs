@@ -30,11 +30,11 @@ pub fn create_project(path: &Path, lang: Language) -> Result<()> {
 
     match lang {
         Language::C => {
-            let starter_code = "#include<stdio.h>\n\nint main() {\n\tprintf(\"Welcome to Kiln!\\n\");\n\treturn 0;\n}";
+            let starter_code = "#include <stdio.h>\n\nint main() {\n\tprintf(\"Welcome to Kiln!\\n\");\n\treturn 0;\n}";
             fs::write(&source_dir.join("main.c"), starter_code)?;
         }
         Language::Cpp => {
-            let starter_code = "#include<iostream>\n\nint main() {\n\tstd::cout << \"Welcome to Kiln!\\n\";\n\treturn 0;\n}";
+            let starter_code = "#include <iostream>\n\nint main() {\n\tstd::cout << \"Welcome to Kiln!\\n\";\n\treturn 0;\n}";
             fs::write(&source_dir.join("main.cpp"), starter_code)?;
         }
     }
@@ -44,8 +44,8 @@ pub fn create_project(path: &Path, lang: Language) -> Result<()> {
 }
 
 /// Links all the files in the project together
-pub fn link_files(proj_dir: &Path, language: Language) -> Result<Vec<String>> {
-    let source_dir = proj_dir.join("src");
+pub fn link_files(config: &Config, proj_dir: &Path, language: Language) -> Result<Vec<String>> {
+    let source_dir = proj_dir.join(config.get_src_dir());
 
     let mut c_files = vec![];
     let source_dir_iter = fs::read_dir(&source_dir)
@@ -131,7 +131,15 @@ pub fn full_compilation_cmd(
 
     command.extend_from_slice(&["-o".to_string(), build_path]);
 
+    // Links all the files in the current project
     command.extend_from_slice(link_file);
+
+    let main_filepath = config.get_main_filepath();
+    if !main_filepath.starts_with(&config.get_src_dir()) {
+        command.push(main_filepath);
+    }
+
+    // Link all the libraries (shared objects like -lm, -lpthread, etc)
     command.extend_from_slice(link_lib);
 
     Ok(command)

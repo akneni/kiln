@@ -206,21 +206,18 @@ fn handle_warnings(config: &Config) -> Result<Vec<safety::Warning>> {
 
 fn handle_build(profile: &str, config: &Config) -> Result<()> {
     if !profile.starts_with("--") {
-        println!("Error: profile must start with `--`");
+        eprintln!("Error: profile must start with `--`");
         process::exit(1);
     }
+    let cwd = env::current_dir().unwrap();
 
-    let mut cwd = env::current_dir().unwrap();
-    cwd.push("build");
-    cwd.push(&profile[2..]);
-    if !cwd.exists() {
-        fs::create_dir_all(&cwd).unwrap();
+    let build_dir = cwd.join("build").join(&profile[2..]);
+    if !build_dir.exists() {
+        fs::create_dir_all(&build_dir).unwrap();
     }
-    cwd.pop();
-    cwd.pop();
 
     let lang = Language::new(&config.project.language).unwrap();
-    let link_file = build_sys::link_files(&cwd, lang)
+    let link_file = build_sys::link_files(&config, &cwd, lang)
         .map_err(|err| anyhow!("Failed to link source files: {}", err))?;
     let link_lib = build_sys::link_lib(&cwd);
     let opt_flags = build_sys::opt_flags(&profile, config).unwrap();

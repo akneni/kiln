@@ -27,6 +27,7 @@ pub enum Commands {
     Add {
         dep: String,
     },
+    PurgeGlobalInstalls,
 
     // Clap doesn't provide any way to structure the syntax to be `kiln run --profile
     // So, we'll have to parse these manually.

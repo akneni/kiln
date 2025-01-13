@@ -12,7 +12,7 @@ mod valgrind;
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use config::Config;
-use constants::{CONFIG_FILE, SEPETATOR};
+use constants::{CONFIG_FILE, PACKAGE_DIR, SEPETATOR};
 use std::{env, fs, path::Path, process};
 use tokio::sync::OwnedRwLockMappedWriteGuard;
 use utils::Language;
@@ -114,6 +114,12 @@ async fn main() {
             res.await.unwrap();
 
             config.to_disk(Path::new(constants::CONFIG_FILE));
+        }
+        cli::Commands::PurgeGlobalInstalls => {
+            let pkg_dir = (*PACKAGE_DIR).clone();
+
+            fs::remove_dir_all(&pkg_dir).unwrap();
+            fs::create_dir(&pkg_dir).unwrap();
         }
         cli::Commands::Build { profile } => {
             if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {

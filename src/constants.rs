@@ -34,7 +34,7 @@ pub static DATA_DIR: Lazy<PathBuf> = Lazy::new(|| {
                 return Path::new(&user_path_s).to_path_buf();
             }
             panic!(
-                "Error, no app data directory found. Please create the directory {} (system) or {} (user)",
+                "\n\nError, no app data directory found. Please create the directory {} (system) or {} (user)\n\n",
                 sys_path,
                 user_path,
             );

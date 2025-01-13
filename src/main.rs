@@ -14,7 +14,6 @@ use clap::Parser;
 use config::Config;
 use constants::{CONFIG_FILE, PACKAGE_DIR, SEPETATOR};
 use std::{env, fs, path::Path, process};
-use tokio::sync::OwnedRwLockMappedWriteGuard;
 use utils::Language;
 use valgrind::VgOutput;
 
@@ -236,18 +235,29 @@ fn handle_build(profile: &str, config: &Config) -> Result<()> {
     }
 
     let lang = Language::new(&config.project.language).unwrap();
-    let link_file = build_sys::link_files(&config, &cwd, lang)
+    let mut link_file = vec![];
+    build_sys::link_dep_files(&cwd, lang, &mut link_file)?;
+    build_sys::link_proj_files(&config, &cwd, lang, &mut link_file)
         .map_err(|err| anyhow!("Failed to link source files: {}", err))?;
-    let link_lib = build_sys::link_lib(&cwd);
+
+    let link_lib = build_sys::link_sys_lib(&cwd);
     let opt_flags = build_sys::opt_flags(&profile, config).unwrap();
 
-    let compilation_cmd =
-        build_sys::full_compilation_cmd(config, &profile, &link_file, &link_lib, &opt_flags)?;
+    let header_dir = build_sys::link_dep_headers(&cwd)?;
+    let so_dir = build_sys::link_dep_shared_obj(&cwd)?;
 
-    #[cfg(debug_assertions)]
-    {
-        println!("{}", compilation_cmd.join(" "));
-    }
+    let compilation_cmd =
+        build_sys::full_compilation_cmd(
+            config, 
+            &profile, 
+            &link_file, 
+            &link_lib,
+            &header_dir,
+            &so_dir,
+            &opt_flags
+        )?;
+
+    dbg!(compilation_cmd.join(" "));
 
     let child = process::Command::new(&compilation_cmd[0])
         .args(&compilation_cmd[1..])

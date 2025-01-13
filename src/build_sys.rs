@@ -30,7 +30,7 @@ pub fn create_project(path: &Path, lang: Language) -> Result<()> {
             let starter_code = "#include <stdio.h>\n\nint main() {\n\tprintf(\"Welcome to Kiln!\\n\");\n\treturn 0;\n}";
             fs::write(&source_dir.join("main.c"), starter_code)?;
         }
-        Language::Cpp => {
+        Language::Cpp | Language::Cuda => {
             let starter_code = "#include <iostream>\n\nint main() {\n\tstd::cout << \"Welcome to Kiln!\\n\";\n\treturn 0;\n}";
             fs::write(&source_dir.join("main.cpp"), starter_code)?;
         }
@@ -41,11 +41,16 @@ pub fn create_project(path: &Path, lang: Language) -> Result<()> {
 }
 
 /// Links all the files in the project together
-pub fn link_files(config: &Config, proj_dir: &Path, language: Language) -> Result<Vec<String>> {
+pub fn link_proj_files(
+    config: &Config, 
+    proj_dir: &Path, 
+    language: Language,
+    out_buffer: &mut Vec<String>
+) -> Result<()> {
+
     let source_dir = proj_dir.join(config.get_src_dir());
 
-    let mut c_files = vec![];
-    let source_dir_iter = fs::read_dir(&source_dir).map_err(|err| {
+    let source_dir_iter = source_dir.read_dir().map_err(|err| {
         anyhow!(
             "Failed to iterate over source dir {:?}c: {}",
             source_dir,
@@ -58,15 +63,21 @@ pub fn link_files(config: &Config, proj_dir: &Path, language: Language) -> Resul
             let file = file.file_name();
             let filename = file.to_str().unwrap();
             if filename.ends_with(language.file_ext()) {
-                c_files.push(format!("src/{}", filename));
+                let filepath = source_dir.join(filename);
+                let filepath = filepath
+                    .to_str()
+                    .unwrap()
+                    .to_string();
+
+                out_buffer.push(filepath);
             }
         }
     }
 
-    Ok(c_files)
+    Ok(())
 }
 
-pub fn link_lib(path: &Path) -> Vec<String> {
+pub fn link_sys_lib(path: &Path) -> Vec<String> {
     let c_lib_mappings = [
         ("<math.h>", "-lm"),                // Math library
         ("<omp.h>", "-fopenmp"),            // OpenMP library
@@ -98,6 +109,76 @@ pub fn link_lib(path: &Path) -> Vec<String> {
     libs
 }
 
+pub(super) fn link_dep_files(
+    proj_dir: &Path,
+    language: Language,
+    out_buffer: &mut Vec<String>,
+) -> Result<()> {
+    
+    let code_deps = proj_dir.join("dependencies").join("source_code");
+    if !code_deps.exists() {
+        return Ok(());
+    }
+
+    for f_name in code_deps.read_dir()? {
+        let f_name = match f_name {
+            Ok(f) => f,
+            Err(e) => {
+                dbg!(e);
+                continue;
+            }
+        };
+
+        if !f_name.file_type()?.is_file() {
+            continue;
+        }
+
+        let f_osstr = f_name.file_name();
+        let f_str = f_osstr.to_str().unwrap();
+
+        let valid_ext = match language {
+            Language::C => [".c"].as_slice(),
+            Language::Cpp => [".c", ".cpp"].as_slice(),
+            Language::Cuda => [".c", ".cpp", ".cu"].as_slice(),
+        };
+
+        if !valid_ext.iter().any(|&ext| f_str.ends_with(ext)) {
+            continue;
+        }
+
+        let f_path = code_deps.join(f_str);
+
+        let f_path_str = f_path.to_str().unwrap().to_string();
+        out_buffer.push(f_path_str);
+    }
+
+    Ok(())
+}
+
+pub(super) fn link_dep_headers(proj_dir: &Path) -> Result<Option<String>> {
+    let headers_dir = proj_dir.join("dependencies").join("header_files");
+    if !headers_dir.exists() {
+        return Ok(None);
+    }
+    let headers_path = headers_dir
+        .to_str()
+        .unwrap()
+        .to_string();
+    Ok(Some(headers_path))
+}
+
+pub(super) fn link_dep_shared_obj(proj_dir: &Path) -> Result<Option<String>> {
+    let headers_dir = proj_dir.join("dependencies").join("shared_objects");
+    if !headers_dir.exists() {
+        return Ok(None);
+    }
+    let headers_path = headers_dir
+        .to_str()
+        .unwrap()
+        .to_string();
+    Ok(Some(headers_path))
+}
+
 pub fn opt_flags(profile: &str, config: &Config) -> Result<Vec<String>> {
     let profile = &profile[2..];
 
@@ -115,6 +196,8 @@ pub fn full_compilation_cmd(
     profile: &str,
     link_file: &Vec<String>,
     link_lib: &Vec<String>,
+    header_dir: &Option<String>,
+    shared_obj_dir: &Option<String>,
     flags: &Vec<String>,
 ) -> Result<Vec<String>> {
     let compiler = config.get_compiler_path();
@@ -131,6 +214,15 @@ pub fn full_compilation_cmd(
     let build_path = format!("build/{}/{}", profile, &config.project.name);
 
     command.extend_from_slice(&["-o".to_string(), build_path]);
+
+    if let Some(header_dir) = header_dir {
+        let tmp = format!("-I{}", header_dir);
+        command.push(tmp);
+    }
+    if let Some(shared_obj_dir) = shared_obj_dir {
+        let tmp = format!("-L{}", shared_obj_dir);
+        command.push(tmp);
+    }
 
     // Links all the files in the current project
     command.extend_from_slice(link_file);

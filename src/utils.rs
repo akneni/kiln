@@ -10,6 +10,7 @@ use colored::*;
 pub enum Language {
     C,
     Cpp,
+    Cuda,
 }
 
 impl Language {
@@ -31,6 +32,7 @@ impl Language {
         match self {
             Self::C => ".c",
             Self::Cpp => ".cpp",
+            Self::Cuda => ".cu",
         }
     }
 }

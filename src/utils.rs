@@ -16,8 +16,7 @@ impl Language {
     pub fn new(mut s: &str) -> Result<Self> {
         if s.starts_with("--") {
             s = &s[2..];
-        }
-        else if s.starts_with(".") {
+        } else if s.starts_with(".") {
             s = &s[1..];
         }
         let s = s.to_lowercase();
@@ -156,14 +155,13 @@ pub fn print_warning(
     msg: &str,
 ) {
     let err_msg = format!(
-        "{} {} [src/{} | Line {} ]: {:?}\n{}", 
+        "{} {} [src/{} | Line {} ]: {:?}\n{}",
         warning_source.red().bold(),
         "Warning".red().bold(),
-        filename, 
-        line, 
-        warning_type, 
+        filename,
+        line,
+        warning_type,
         msg,
     );
     println!("{}\n", err_msg);
 }
-

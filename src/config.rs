@@ -1,17 +1,49 @@
-
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, path::Path};
+use std::{fs, path::Path};
 use toml;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub project: Project,
     pub build_options: BuildOptions,
-    pub profile: HashMap<String, Profile>,
+    pub dependnecy: Option<Vec<Dependnecy>>,
 }
 
 impl Config {
+    pub fn new(proj_name: &str) -> Self {
+        let project = Project {
+            name: proj_name.to_string(),
+            version: "0.0.1".to_string(),
+            language: "c".to_string(),
+        };
+
+        // No posibility of this failing
+        let build_options = BuildOptions::from(&project).unwrap();
+
+        Config {
+            project,
+            build_options,
+            dependnecy: None,
+        }
+    }
+
+    pub fn from(path: &Path) -> Result<Self> {
+        let toml_str = fs::read_to_string(path)?;
+
+        let config: Config = toml::from_str(&toml_str)?;
+
+        Ok(config)
+    }
+
+    #[allow(unused)]
+    pub fn to_disk(&self, path: &Path) {
+        let s = toml::to_string(&self).unwrap();
+        fs::write(path, s).unwrap();
+    }
+
+    // ========== Getter methods for the build options ==================
+
     pub fn get_compiler_path(&self) -> String {
         self.build_options.compiler_path.clone()
     }
@@ -49,8 +81,16 @@ impl Config {
         };
         format!("{}/{}", self.get_src_dir(), filename)
     }
-}
 
+    pub fn get_flags(&self, compilation_profile: &str) -> Option<&Vec<String>> {
+        if compilation_profile == "debug" {
+            return Some(&self.build_options.debug_flags);
+        } else if compilation_profile == "release" {
+            return Some(&self.build_options.release_flags);
+        }
+        None
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
@@ -62,6 +102,8 @@ pub struct Project {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildOptions {
     compiler_path: String,
+    debug_flags: Vec<String>,
+    release_flags: Vec<String>,
     src_dir: Option<String>,
     include_dir: Option<String>,
     standard: Option<String>,
@@ -71,8 +113,18 @@ pub struct BuildOptions {
 
 impl BuildOptions {
     fn from(project: &Project) -> Result<Self> {
+        let debug_flags = vec![
+            "-g".to_string(),
+            "-O0".to_string(),
+            "-Wall".to_string(),
+            "-fsanitize=undefined".to_string(),
+        ];
+        let release_flags = vec!["-Wall".to_string(), "-O3".to_string()];
+
         let mut b_config = BuildOptions {
             standard: None,
+            debug_flags,
+            release_flags,
             compiler_path: "placeholder".to_string(),
             src_dir: None,
             include_dir: None,
@@ -83,10 +135,10 @@ impl BuildOptions {
         match project.language.as_str() {
             "c" => {
                 b_config.compiler_path = "gcc".to_string();
-            },
+            }
             "cpp" => {
                 b_config.compiler_path = "g++".to_string();
-            },
+            }
             "cuda" => {
                 b_config.compiler_path = "nvcc".to_string();
             }
@@ -96,79 +148,12 @@ impl BuildOptions {
     }
 }
 
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Profile {
-    pub flags: Vec<String>,
-}
-
-impl Config {
-    const REQUIRED_PROFILES: [&str; 2] = ["debug", "release"];
-
-    pub fn new(proj_name: &str) -> Self {
-        let project = Project {
-            name: proj_name.to_string(),
-            version: "0.0.1".to_string(),
-            language: "c".to_string(),
-        };
-
-        // No posibility of this failing
-        let build_options = BuildOptions::from(&project)
-            .unwrap();
-
-        let mut profile = HashMap::new();
-
-        profile.insert(
-            "debug".to_string(),
-            Profile {
-                flags: vec![
-                    "-g".to_string(),
-                    "-O0".to_string(),
-                    "-Wall".to_string(),
-                    "-fsanitize=undefined".to_string(),
-                ],
-            },
-        );
-
-        profile.insert(
-            "release".to_string(),
-            Profile {
-                flags: vec![
-                    "-Wall".to_string(),
-                    "-O3".to_string(),
-                ],
-            },
-        );
-
-        Config {
-            project,
-            build_options,
-            profile,
-        }
-    }
-
-    pub fn from(path: &Path) -> Result<Self> {
-        let toml_str = fs::read_to_string(path)?;
-
-        let config: Config = toml::from_str(&toml_str)?;
-        config.validate_profiles()?;
-
-        Ok(config)
-    }
-
-    #[allow(unused)]
-    pub fn to_disk(&self, path: &Path) {
-        let s = toml::to_string(&self).unwrap();
-        fs::write(path, s).unwrap();
-    }
-
-    pub fn validate_profiles(&self) -> Result<()> {
-        for k in self.profile.keys() {
-            if !Self::REQUIRED_PROFILES.contains(&k.as_str()) {
-                return Err(anyhow!("Missing required profile `{}`", k));
-            }
-        }
-
-        Ok(())
-    }
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Dependnecy {
+    pub uri: String,
+    pub version: String,
+    pub include_dir: Option<String>,
+    pub source_dir: Option<String>,
+    pub shared_object_dir: Option<String>,
+    pub static_lib_dir: Option<String>,
 }

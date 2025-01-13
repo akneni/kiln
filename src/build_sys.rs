@@ -3,10 +3,7 @@ use crate::utils::Language;
 use crate::{config::Config, constants::CONFIG_FILE};
 
 use anyhow::{anyhow, Result};
-use std::{
-    fs,
-    path::Path,
-};
+use std::{fs, path::Path};
 
 pub fn create_project(path: &Path, lang: Language) -> Result<()> {
     let toml_path = path.join(CONFIG_FILE);
@@ -48,8 +45,13 @@ pub fn link_files(config: &Config, proj_dir: &Path, language: Language) -> Resul
     let source_dir = proj_dir.join(config.get_src_dir());
 
     let mut c_files = vec![];
-    let source_dir_iter = fs::read_dir(&source_dir)
-        .map_err(|err| anyhow!("Failed to iterate over source dir {:?}c: {}", source_dir, err))?;
+    let source_dir_iter = fs::read_dir(&source_dir).map_err(|err| {
+        anyhow!(
+            "Failed to iterate over source dir {:?}c: {}",
+            source_dir,
+            err
+        )
+    })?;
 
     for file in source_dir_iter {
         if let Ok(file) = file {
@@ -99,8 +101,8 @@ pub fn link_lib(path: &Path) -> Vec<String> {
 pub fn opt_flags(profile: &str, config: &Config) -> Result<Vec<String>> {
     let profile = &profile[2..];
 
-    if let Some(prof) = config.profile.get(profile) {
-        return Ok(prof.flags.clone());
+    if let Some(prof) = config.get_flags(profile) {
+        return Ok(prof.clone());
     }
     Err(anyhow!(
         "profile `--{}` does not exist. Choose a different profile or declare it in Kiln.toml",
@@ -115,7 +117,6 @@ pub fn full_compilation_cmd(
     link_lib: &Vec<String>,
     flags: &Vec<String>,
 ) -> Result<Vec<String>> {
-
     let compiler = config.get_compiler_path();
     let standard = config.get_standard();
 
@@ -145,21 +146,29 @@ pub fn full_compilation_cmd(
     Ok(command)
 }
 
-pub fn validate_proj_repo(path: &Path) -> Result<()>{
+pub fn validate_proj_repo(path: &Path) -> Result<()> {
     let config = path.join(CONFIG_FILE);
     if !config.exists() {
-        return Err(anyhow!("Invalid Project Directory: config file `{}` doesn't exist.", CONFIG_FILE));
+        return Err(anyhow!(
+            "Invalid Project Directory: config file `{}` doesn't exist.",
+            CONFIG_FILE
+        ));
+    } else if !config.is_file() {
+        return Err(anyhow!(
+            "Invalid Project Directory: `{}` is not a file.",
+            CONFIG_FILE
+        ));
     }
-    else if !config.is_file() {
-        return Err(anyhow!("Invalid Project Directory: `{}` is not a file.", CONFIG_FILE));
-    } 
-    
+
     let source_dir = path.join("src");
     if !source_dir.exists() {
-        return Err(anyhow!("Invalid Project Directory: source code directory `src/` doesn't exist."));
-    }
-    else if !source_dir.is_dir() {
-        return Err(anyhow!("Invalid Project Directory: `src` is not a directory."));
+        return Err(anyhow!(
+            "Invalid Project Directory: source code directory `src/` doesn't exist."
+        ));
+    } else if !source_dir.is_dir() {
+        return Err(anyhow!(
+            "Invalid Project Directory: `src` is not a directory."
+        ));
     }
     Ok(())
 }

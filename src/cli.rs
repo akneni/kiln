@@ -23,6 +23,10 @@ pub enum Commands {
         #[arg(value_enum, long, default_value = "c")]
         language: utils::Language,
     },
+    GenHeaders,
+    Add {
+        dep: String,
+    },
 
     // Clap doesn't provide any way to structure the syntax to be `kiln run --profile
     // So, we'll have to parse these manually.
@@ -34,7 +38,6 @@ pub enum Commands {
         args: Vec<String>,
         valgrind: bool,
     },
-    GenHeaders,
 }
 
 impl Commands {
@@ -64,5 +67,3 @@ fn parse_language(arg: &str) -> Result<Language, &str> {
         }
     }
 }
-
-

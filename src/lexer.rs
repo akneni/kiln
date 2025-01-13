@@ -38,19 +38,15 @@ pub enum Token<'a> {
 
 impl<'a> Token<'a> {
     pub fn tokens_to_string(tokens: &[Token]) -> String {
-        let space_after = [
-            Token::Comma,
-            Token::Asterisk,
-        ];
+        let space_after = [Token::Comma, Token::Asterisk];
         let mut string = String::new();
 
         for (i, &t) in tokens.iter().enumerate() {
             if let Token::Object(s) = t {
                 if i != 0 {
-                    if let Token::Object(_) = tokens[i-1] {
+                    if let Token::Object(_) = tokens[i - 1] {
                         string.push(' ');
-                    }
-                    else if space_after.contains(&tokens[i-1]) {
+                    } else if space_after.contains(&tokens[i - 1]) {
                         string.push(' ');
                     }
                 }
@@ -58,11 +54,9 @@ impl<'a> Token<'a> {
                 if s == "include" {
                     string.push(' ');
                 }
-            }
-            else if let Token::Literal(s) = t {
+            } else if let Token::Literal(s) = t {
                 string.push_str(s);
-            }
-            else {
+            } else {
                 for i in 0..TOKEN_MAPPING.len() {
                     if let Some(c) = TOKEN_MAPPING[i] {
                         if c == t {
@@ -84,15 +78,16 @@ impl<'a> Token<'a> {
                 Token::Object(s) => {
                     if i > 0 {
                         let needs_space = matches!(
-                            tokens[i - 1], Token::Object(_) | 
-                            Token::Literal(_) | 
-                            Token::CloseCurlyBrace |
-                            Token::Asterisk
+                            tokens[i - 1],
+                            Token::Object(_)
+                                | Token::Literal(_)
+                                | Token::CloseCurlyBrace
+                                | Token::Asterisk
                         );
                         if needs_space {
                             string.push(' ');
-                        }
-                        else if matches!(tokens[i-1], Token::Semicolon | Token::OpenCurlyBrace) {
+                        } else if matches!(tokens[i - 1], Token::Semicolon | Token::OpenCurlyBrace)
+                        {
                             string.push('\t');
                         }
                     }
@@ -121,7 +116,6 @@ impl<'a> Token<'a> {
                             }
                         }
                     }
-
                 }
             }
         }
@@ -133,8 +127,7 @@ impl<'a> Token<'a> {
 pub fn clean_source_code(code: String) -> String {
     let mut cleaned = String::with_capacity(code.len());
 
-    let mut in_block_comment = false;  // whether we're inside /* ... */
-
+    let mut in_block_comment = false; // whether we're inside /* ... */
     for line in code.split("\n") {
         let line = line.trim();
         if line.len() == 0 {
@@ -156,8 +149,7 @@ pub fn clean_source_code(code: String) -> String {
 
                 cleaned.push_str(line);
             }
-        }
-        else {
+        } else {
             if !line.contains("/") {
                 cleaned.push_str(line);
                 continue;
@@ -182,7 +174,7 @@ pub fn clean_source_code(code: String) -> String {
 pub fn tokenize(code: &str) -> Result<Vec<Token>> {
     let code_bytes = code.as_bytes();
     let mut tokens = Vec::with_capacity(4096);
-    
+
     let mut idx: usize = 0;
     while idx < code.len() {
         if code_bytes[idx] == ' ' as u8 || code_bytes[idx] == '\t' as u8 {
@@ -196,7 +188,7 @@ pub fn tokenize(code: &str) -> Result<Vec<Token>> {
         }
         if code_bytes[idx] == '"' as u8 {
             let len = find_len_stringliteral(&code_bytes[idx..])?;
-            let val = &code[idx..(idx+len)];
+            let val = &code[idx..(idx + len)];
             let tok = Token::Literal(val);
             tokens.push(tok);
             idx += len;
@@ -245,8 +237,8 @@ fn find_len_stringliteral(code_bytes: &[u8]) -> Result<usize> {
         if code_bytes[idx] == '\n' as u8 {
             break;
         }
-        if code_bytes[idx] == '"' as u8{
-            if code_bytes[idx] != '\\' as u8{
+        if code_bytes[idx] == '"' as u8 {
+            if code_bytes[idx] != '\\' as u8 {
                 idx += 1;
                 return Ok(idx);
             }
@@ -385,9 +377,8 @@ const TOKEN_MAPPING: [Option<Token>; 128] = [
     Some(Token::Pipe),
     Some(Token::CloseCurlyBrace),
     Some(Token::Tilda),
-    None
+    None,
 ];
-
 
 pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     let mut fn_defs = vec![];
@@ -405,16 +396,10 @@ pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
             if RESTRICTED_KWARGS.contains(&obj) {
                 skip_to(tokens, Token::CloseParen, &mut i);
                 continue;
-            }
-            else if obj == "include" {
-                skip_to_oneof(
-                    tokens, 
-                    &[Token::GreaterThan, Token::Literal("-")],
-                    &mut i
-                );
+            } else if obj == "include" {
+                skip_to_oneof(tokens, &[Token::GreaterThan, Token::Literal("-")], &mut i);
                 continue;
-            }
-            else if obj == "define" {
+            } else if obj == "define" {
                 skip_to(tokens, Token::NewLine, &mut i);
                 continue;
             }
@@ -426,20 +411,16 @@ pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                         break;
                     }
                     conditions[0] = true;
-                }
-                else if let Token::OpenParen = tokens[j] {
+                } else if let Token::OpenParen = tokens[j] {
                     conditions[1] = true;
-                }
-                else if let Token::CloseParen = tokens[j] {
+                } else if let Token::CloseParen = tokens[j] {
                     conditions[2] = true;
-                }
-                else if let Token::OpenCurlyBrace = tokens[j] {
+                } else if let Token::OpenCurlyBrace = tokens[j] {
                     if conditions.iter().all(|&i| i) {
                         fn_defs.push(&tokens[i..j]);
                     }
                     break;
-                }
-                else if let Token::Semicolon = tokens[j] {
+                } else if let Token::Semicolon = tokens[j] {
                     break;
                 }
                 j += 1;
@@ -455,17 +436,13 @@ pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
 
 pub fn get_includes<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     let mut includes = vec![];
-    
+
     let mut idx: usize = 0;
     while idx < tokens.len() {
         if let Token::HashTag = tokens[idx] {
             let mut end = idx;
-            skip_to_oneof(
-                tokens, 
-                &[Token::GreaterThan, Token::Literal("-")],
-                &mut end
-            );
-            includes.push(&tokens[idx..(end+1)]);
+            skip_to_oneof(tokens, &[Token::GreaterThan, Token::Literal("-")], &mut end);
+            includes.push(&tokens[idx..(end + 1)]);
             idx = end;
             continue;
         }
@@ -480,17 +457,16 @@ pub fn get_structs<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     if tokens.len() < 3 {
         return structs;
     }
-    
+
     let mut idx: usize = 0;
     while idx < tokens.len() - 2 {
         if let Token::Object(obj) = tokens[idx] {
             if !["typedef", "struct"].contains(&obj) {
                 idx += 1;
                 continue;
-            }
-            else if "typedef" == obj {
-                let obj_2 = if let Token::Object(obj_2) = tokens[idx+1] {
-                    obj_2  
+            } else if "typedef" == obj {
+                let obj_2 = if let Token::Object(obj_2) = tokens[idx + 1] {
+                    obj_2
                 } else {
                     "-"
                 };
@@ -508,22 +484,21 @@ pub fn get_structs<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
             };
 
             let end = idx + length + 1;
-            if tokens[end-1] != Token::Semicolon {
+            if tokens[end - 1] != Token::Semicolon {
                 idx += 1;
                 continue;
             }
-            if 
-                tokens[end-2] != Token::CloseCurlyBrace &&
-                std::mem::discriminant(&tokens[end-2]) != std::mem::discriminant(&Token::Object("_"))
+            if tokens[end - 2] != Token::CloseCurlyBrace
+                && std::mem::discriminant(&tokens[end - 2])
+                    != std::mem::discriminant(&Token::Object("_"))
             {
                 idx += 1;
                 continue;
             }
 
             structs.push(&tokens[idx..end]);
-            idx = end-1;
-        }
-        else {
+            idx = end - 1;
+        } else {
             idx += 1;
         }
     }
@@ -540,14 +515,14 @@ fn struct_len(tokens: &[Token]) -> Option<usize> {
             Token::OpenCurlyBrace => {
                 num_brackets += 1;
                 contains_brackets = true;
-            },
+            }
             Token::CloseCurlyBrace => {
                 contains_brackets = true;
                 num_brackets -= 1;
                 if num_brackets < 0 {
                     return None;
                 }
-            },
+            }
             Token::Semicolon => {
                 if num_brackets == 0 {
                     if contains_brackets {
@@ -562,7 +537,6 @@ fn struct_len(tokens: &[Token]) -> Option<usize> {
 
     None
 }
-
 
 fn skip_to(tokens: &[Token], target: Token, idx: &mut usize) {
     for i in (*idx + 1)..tokens.len() {
@@ -580,15 +554,10 @@ fn skip_to_oneof(tokens: &[Token], targets: &[Token], idx: &mut usize) {
         *idx = i;
         for target in targets {
             if std::mem::discriminant(&tokens[i]) == std::mem::discriminant(target) {
-                return; 
+                return;
             }
         }
     }
 }
 
-
-const RESTRICTED_KWARGS: [&str; 3] = [
-    "for",
-    "while",
-    "if",
-];
+const RESTRICTED_KWARGS: [&str; 3] = ["for", "while", "if"];

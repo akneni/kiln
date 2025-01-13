@@ -1,7 +1,14 @@
-use std::{collections::HashMap, env, fmt::Debug, fs, process::{self, Command}, sync::{Arc, Mutex}};
 use anyhow::{anyhow, Result};
+use std::{
+    collections::HashMap,
+    env,
+    fmt::Debug,
+    fs,
+    process::{self, Command},
+    sync::{Arc, Mutex},
+};
 
-use crate::{constants::VALGRIND_OUT, utils, valgrind::VgOutput, lexer};
+use crate::{constants::VALGRIND_OUT, lexer, utils, valgrind::VgOutput};
 
 /// This checks if unsafe functions exist within a line using general string parsing
 /// This is messy and prone to false positives.
@@ -18,31 +25,30 @@ impl FunctionMap {
             ("strcat".to_string(), "strncat".to_string()),
             ("strtok".to_string(), "strtok_r".to_string()),
             ("vsprintf".to_string(), "vsnprintf".to_string()),
-
             // I/O Functions
             ("gets".to_string(), "fgets".to_string()),
             ("sprintf".to_string(), "snprintf".to_string()),
-            
             // DType conversions
             ("atoi".to_string(), "strtol".to_string()),
             ("atol".to_string(), "strtol".to_string()),
             ("atoll".to_string(), "strtoll".to_string()),
             ("atof".to_string(), "strtof".to_string()),
-
             // Time related functions
             ("gmtime".to_string(), "gmtime_r".to_string()),
             ("localtime".to_string(), "localtime_r".to_string()),
             ("ctime".to_string(), "ctime_r".to_string()),
             ("asctime".to_string(), "asctime_r".to_string()),
-        ].into_iter().collect();
+        ]
+        .into_iter()
+        .collect();
 
-        Self {map}
+        Self { map }
     }
 }
 
 #[derive(Debug)]
 pub enum WarningType {
-    UnsafeFunction
+    UnsafeFunction,
 }
 
 #[derive(Debug)]
@@ -50,7 +56,7 @@ pub struct Warning {
     pub msg: String,
     pub filename: String,
     pub line: usize,
-    pub warning_type: WarningType
+    pub warning_type: WarningType,
 }
 
 pub fn check_files(source_type: &str) -> Result<Vec<Warning>> {
@@ -60,8 +66,7 @@ pub fn check_files(source_type: &str) -> Result<Vec<Warning>> {
 
     if !source_dir.exists() {
         return Err(anyhow!("src/ does not exist."));
-    }
-    else if !source_dir.is_dir() {
+    } else if !source_dir.is_dir() {
         return Err(anyhow!("src is not a directory."));
     }
 
@@ -70,18 +75,14 @@ pub fn check_files(source_type: &str) -> Result<Vec<Warning>> {
     for path in fs::read_dir(source_dir)? {
         if let Ok(path) = path {
             let path = path.path();
-            let name = path.file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string();
+            let name = path.file_name().unwrap().to_str().unwrap().to_string();
             if !name.ends_with(source_type) {
                 continue;
             }
 
             let source_code = fs::read_to_string(path)?;
             let mut curr_warnings = scan_file(&name, &source_code, &func_map);
-            
+
             warnings.append(&mut curr_warnings);
         }
     }
@@ -89,18 +90,17 @@ pub fn check_files(source_type: &str) -> Result<Vec<Warning>> {
     Ok(warnings)
 }
 
-
 #[allow(unused)]
 pub fn check_files_threaded(source_type: &str, warn_buff: Arc<Mutex<Vec<Warning>>>) -> Result<()> {
     let mut warnings = check_files(source_type)?;
-    
+
     let mut lock = warn_buff.lock().unwrap();
     lock.append(&mut warnings);
-    
+
     Ok(())
 }
 
-fn scan_file(filename: &str, source_code: &str, func_map: &FunctionMap) ->Vec<Warning> {
+fn scan_file(filename: &str, source_code: &str, func_map: &FunctionMap) -> Vec<Warning> {
     let mut warnings = vec![];
 
     for (line_num, line) in source_code.split('\n').enumerate() {
@@ -116,19 +116,22 @@ fn scan_file(filename: &str, source_code: &str, func_map: &FunctionMap) ->Vec<Wa
             continue;
         }
 
-        for i in 0..(tokens.len()-1) {
+        for i in 0..(tokens.len() - 1) {
             if let lexer::Token::Object(obj) = tokens[i] {
-                if tokens[i+1] != lexer::Token::OpenParen {
+                if tokens[i + 1] != lexer::Token::OpenParen {
                     continue;
                 }
                 if let Some(safe_fn) = func_map.map.get(obj) {
                     let warning = Warning {
                         warning_type: WarningType::UnsafeFunction,
-                        msg: format!("{}() is an unsafe function. Consuder using {}() instead", obj, safe_fn),
+                        msg: format!(
+                            "{}() is an unsafe function. Consuder using {}() instead",
+                            obj, safe_fn
+                        ),
                         filename: filename.to_string(),
                         line: line_num + 1,
                     };
-                    
+
                     warnings.push(warning);
                 }
             }
@@ -144,11 +147,11 @@ fn scan_file(filename: &str, source_code: &str, func_map: &FunctionMap) ->Vec<Wa
 pub fn exec_w_valgrind(bin_path: &str, passthough_args: &Vec<String>) -> Result<VgOutput> {
     let log_file = format!("--xml-file={}", VALGRIND_OUT);
     let mut valgrind_args = vec![
-        &log_file, 
+        &log_file,
         "--leak-check=full",
         "--track-origins=yes",
         "--xml=yes",
-        bin_path
+        bin_path,
     ];
 
     for arg in passthough_args {
@@ -183,16 +186,13 @@ pub fn exec_w_valgrind(bin_path: &str, passthough_args: &Vec<String>) -> Result<
         .map_err(|err| anyhow!("Error reading from file: {}", err))?;
 
     if fs::exists(VALGRIND_OUT).map_err(|err| anyhow!("Error checking if file exists: {}", err))? {
-        fs::remove_file(VALGRIND_OUT)
-            .map_err(|err| anyhow!("Error removing file: {}", err))?;
+        fs::remove_file(VALGRIND_OUT).map_err(|err| anyhow!("Error removing file: {}", err))?;
     }
 
-    VgOutput::from_str(&valgrind_out)
-        .map_err(|err| anyhow!("Error parsing Valgrind: {}", err))
+    VgOutput::from_str(&valgrind_out).map_err(|err| anyhow!("Error parsing Valgrind: {}", err))
 }
 
-
-/// Returns a vector of human readable error messages 
+/// Returns a vector of human readable error messages
 /// meant for the end user of Kiln to see
 pub fn print_vg_errors(vg_output: &VgOutput) {
     for err in &vg_output.errors {
@@ -210,13 +210,6 @@ pub fn print_vg_errors(vg_output: &VgOutput) {
             }
         }
 
-        utils::print_warning(
-            "Valgrind", 
-            &filename, 
-            &line, 
-            &err.kind, 
-            &err.xwhat.text
-        );
+        utils::print_warning("Valgrind", &filename, &line, &err.kind, &err.xwhat.text);
     }
-
 }

@@ -2,9 +2,9 @@
 
 use std::fs;
 
+use anyhow::Result;
 use serde::Deserialize;
 use serde_xml_rs;
-use anyhow::Result;
 
 #[derive(Debug, Default, Deserialize)]
 pub struct VgOutput {

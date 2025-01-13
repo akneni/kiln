@@ -1,25 +1,25 @@
-
 mod build_sys;
 mod cli;
 mod config;
 mod constants;
+mod kiln_package;
+mod lexer;
+mod package_manager;
 mod safety;
 mod utils;
 mod valgrind;
-mod lexer;
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use config::Config;
 use constants::{CONFIG_FILE, SEPETATOR};
 use std::{env, fs, path::Path, process};
+use tokio::sync::OwnedRwLockMappedWriteGuard;
 use utils::Language;
 use valgrind::VgOutput;
 
-
-
-fn main() {
-
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
     let cli_args: cli::CliCommand;
     let raw_cli_args = std::env::args().collect::<Vec<String>>();
     if raw_cli_args.len() < 2 {
@@ -28,11 +28,10 @@ fn main() {
     } else if raw_cli_args[1] == "run" || raw_cli_args[1] == "build" {
         let mut profile = "--debug".to_string();
         let mut args = vec![];
-        if 
-            raw_cli_args.len() >= 3 && 
-            raw_cli_args[2].starts_with("--") && 
-            raw_cli_args[2].len() > 2 &&
-            raw_cli_args[2] != "--valgrind"
+        if raw_cli_args.len() >= 3
+            && raw_cli_args[2].starts_with("--")
+            && raw_cli_args[2].len() > 2
+            && raw_cli_args[2] != "--valgrind"
         {
             // Extracts compilation profile
 
@@ -85,6 +84,37 @@ fn main() {
                 println!("An error occurred while creating the project:\n{}", e);
             }
         }
+        cli::Commands::GenHeaders => {
+            if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
+                println!("{}", e);
+                process::exit(1);
+            }
+            let config = config.unwrap();
+            if config.project.language != "c" {
+                println!("Unfortunately, generating header files is only avilalbe for C.");
+                println!("Stay tuned!! C++/CUDA support coming soon!");
+                process::exit(0);
+            }
+
+            if let Err(err) = handle_headers(&config) {
+                println!("An error occured while generating header files:\n{}", err);
+                process::exit(1);
+            }
+        }
+        cli::Commands::Add { dep } => {
+            if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
+                println!("{}", e);
+                process::exit(1);
+            }
+            let mut config = config.unwrap();
+            let (owner, proj_name) = package_manager::parse_github_uri(&dep).unwrap();
+
+            let res = package_manager::resolve_adding_package(&mut config, owner, proj_name, None);
+
+            res.await.unwrap();
+
+            config.to_disk(Path::new(constants::CONFIG_FILE));
+        }
         cli::Commands::Build { profile } => {
             if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
                 println!("{}", e);
@@ -100,9 +130,12 @@ fn main() {
                 eprintln!("An error occured while building the project:\n{}", e);
                 process::exit(1);
             }
-
         }
-        cli::Commands::Run { profile, args, valgrind } => {
+        cli::Commands::Run {
+            profile,
+            args,
+            valgrind,
+        } => {
             if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
                 println!("{}", e);
                 process::exit(1);
@@ -117,7 +150,7 @@ fn main() {
                 eprintln!("An error occured while building the project:\n{}", e);
                 process::exit(1);
             }
-            
+
             if valgrind {
                 if env::consts::OS != "linux" {
                     eprintln!("Valgrind is only supported for linux.");
@@ -128,7 +161,6 @@ fn main() {
                     .join(&profile[2..])
                     .join(config.project.name);
 
-    
                 let bin = exe_path.to_str().unwrap();
                 let valgrind_out = match safety::exec_w_valgrind(bin, &args) {
                     Ok(vg) => vg,
@@ -144,13 +176,12 @@ fn main() {
                         VgOutput::default()
                     }
                 };
-    
+
                 if valgrind_out.errors.len() > 0 {
                     println!("{}\n", *SEPETATOR);
                     safety::print_vg_errors(&valgrind_out);
                 }
-            }
-            else {
+            } else {
                 // If use_valgrind = false
                 let err = handle_execution(&profile, &config, &cwd, &args);
                 if let Err(e) = err {
@@ -159,31 +190,13 @@ fn main() {
                 }
             }
         }
-        cli::Commands::GenHeaders => {
-            if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
-                println!("{}", e);
-                process::exit(1);
-            }
-            let config = config.unwrap();
-            if config.project.language != "c" {
-                println!("Unfortunately, generating header files is only avilalbe for C.");
-                println!("Stay tuned!! C++/CUDA support coming soon!");
-                process::exit(0);
-            }
-
-
-            if let Err(err) = handle_headers(&config) {
-                println!("An error occured while generating header files:\n{}", err);
-                process::exit(1);
-            }
-        }
     }
 }
 
 /// Returns true if there were warnings and false if there was no warnings.
 fn handle_warnings(config: &Config) -> Result<Vec<safety::Warning>> {
     if !config.get_kiln_static_analysis() {
-        return Ok(vec![])
+        return Ok(vec![]);
     }
 
     let warnings = safety::check_files(&config.project.language)?;
@@ -222,15 +235,11 @@ fn handle_build(profile: &str, config: &Config) -> Result<()> {
     let link_lib = build_sys::link_lib(&cwd);
     let opt_flags = build_sys::opt_flags(&profile, config).unwrap();
 
-    let compilation_cmd = build_sys::full_compilation_cmd(
-        config, 
-        &profile, 
-        &link_file, 
-        &link_lib, 
-        &opt_flags
-    )?;
+    let compilation_cmd =
+        build_sys::full_compilation_cmd(config, &profile, &link_file, &link_lib, &opt_flags)?;
 
-    #[cfg(debug_assertions)] {
+    #[cfg(debug_assertions)]
+    {
         println!("{}", compilation_cmd.join(" "));
     }
 
@@ -251,10 +260,10 @@ fn handle_build(profile: &str, config: &Config) -> Result<()> {
 }
 
 fn handle_execution(
-    profile: &str, 
-    config: &Config, 
+    profile: &str,
+    config: &Config,
     project_dir: &Path,
-    passthough_args: &[String]
+    passthough_args: &[String],
 ) -> Result<()> {
     if !profile.starts_with("--") {
         return Err(anyhow!("Error: profile must start with `--`"));
@@ -276,7 +285,7 @@ fn handle_execution(
         .stderr(process::Stdio::inherit())
         .output()
         .map_err(|e| anyhow!("Failed to run {:?} binary: {}", bin_path, e))?;
-    
+
     if !output.status.success() {
         let code = output.status.code().unwrap_or(1);
         process::exit(code);
@@ -295,14 +304,8 @@ fn handle_headers(config: &Config) -> Result<()> {
 
     for file in fs::read_dir(src_dir).unwrap() {
         if let Ok(file) = file {
-            let raw_name = file
-                .file_name();
-            let raw_name = raw_name
-                .to_str()
-                .unwrap()
-                .rsplit_once(".")
-                .unwrap()
-                .0;
+            let raw_name = file.file_name();
+            let raw_name = raw_name.to_str().unwrap().rsplit_once(".").unwrap().0;
             if raw_name == "main" {
                 continue;
             }
@@ -312,15 +315,14 @@ fn handle_headers(config: &Config) -> Result<()> {
             code = lexer::clean_source_code(code);
             let tokens = lexer::tokenize(&code)?;
 
-            let mut code_h = fs::read_to_string(inc_dir.join(&header_name))
-                .unwrap_or("".to_string());
-            code_h = lexer::clean_source_code(code_h);                    
+            let mut code_h =
+                fs::read_to_string(inc_dir.join(&header_name)).unwrap_or("".to_string());
+            code_h = lexer::clean_source_code(code_h);
             let tokens_h = lexer::tokenize(&code_h)?;
 
             let fn_defs = lexer::get_fn_def(&tokens);
             let includes = lexer::get_includes(&tokens);
             let structs = lexer::get_structs(&tokens_h);
-
 
             let mut headers = String::new();
 

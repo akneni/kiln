@@ -1,8 +1,10 @@
+use crate::config::Dependnecy;
 use crate::utils;
 use crate::utils::Language;
 use crate::{config::Config, constants::CONFIG_FILE};
 
 use anyhow::{anyhow, Result};
+use std::collections::{HashMap, HashSet};
 use std::{fs, path::Path};
 
 pub fn create_project(path: &Path, lang: Language) -> Result<()> {
@@ -106,57 +108,40 @@ pub fn link_sys_lib(path: &Path) -> Vec<String> {
 }
 
 pub(super) fn link_dep_files(
-    proj_dir: &Path,
+    config: &Config,
     language: Language,
     out_buffer: &mut Vec<String>,
 ) -> Result<()> {
-    let code_deps = proj_dir.join("dependencies").join("source_code");
-    if !code_deps.exists() {
-        return Ok(());
-    }
+    let deps = match &config.dependnecy {
+        Some(d) => d.clone(),
+        None => return Ok((),)
+    };
 
-    for f_name in code_deps.read_dir()? {
-        let f_name = match f_name {
-            Ok(f) => f,
-            Err(e) => {
-                dbg!(e);
-                continue;
-            }
-        };
+    // {key: uri, value: version}
+    let mut packages: HashMap<String, String> = HashMap::new();
+    
+    // {key: filename, value: uri file is from}
+    let mut filenames: HashMap<String, String> = HashMap::new();
 
-        if !f_name.file_type()?.is_file() {
-            continue;
-        }
-
-        let f_osstr = f_name.file_name();
-        let f_str = f_osstr.to_str().unwrap();
-
-        let valid_ext = match language {
-            Language::C => [".c"].as_slice(),
-            Language::Cpp => [".c", ".cpp"].as_slice(),
-            Language::Cuda => [".c", ".cpp", ".cu"].as_slice(),
-        };
-
-        if !valid_ext.iter().any(|&ext| f_str.ends_with(ext)) {
-            continue;
-        }
-
-        let f_path = code_deps.join(f_str);
-
-        let f_path_str = f_path.to_str().unwrap().to_string();
-        out_buffer.push(f_path_str);
+    for dep in deps {
+        link_dep_files_h(&dep, language, out_buffer, &mut packages, &mut filenames)?;
     }
 
     Ok(())
 }
 
-pub(super) fn link_dep_headers(proj_dir: &Path) -> Result<Option<String>> {
-    let headers_dir = proj_dir.join("dependencies").join("header_files");
-    if !headers_dir.exists() {
-        return Ok(None);
+pub(super) fn link_dep_headers(config: &Config) -> Result<Vec<String>> {
+    let mut header_dirs = vec![];
+
+    let mut packages: HashSet<String> = HashSet::new();
+
+    if let Some(deps) = &config.dependnecy {
+        for dep in deps {
+            link_dep_headers_h(dep, &mut header_dirs, &mut packages)?;
+        }
     }
-    let headers_path = headers_dir.to_str().unwrap().to_string();
-    Ok(Some(headers_path))
+
+    Ok(header_dirs)
 }
 
 pub(super) fn link_dep_shared_obj(proj_dir: &Path) -> Result<Option<String>> {
@@ -185,7 +170,7 @@ pub fn full_compilation_cmd(
     profile: &str,
     link_file: &Vec<String>,
     link_lib: &Vec<String>,
-    header_dir: &Option<String>,
+    header_dirs: &Vec<String>,
     shared_obj_dir: &Option<String>,
     flags: &Vec<String>,
 ) -> Result<Vec<String>> {
@@ -204,10 +189,11 @@ pub fn full_compilation_cmd(
 
     command.extend_from_slice(&["-o".to_string(), build_path]);
 
-    if let Some(header_dir) = header_dir {
-        let tmp = format!("-I{}", header_dir);
+    for header_dir in header_dirs {
+        let tmp: String = format!("-I{}", header_dir);
         command.push(tmp);
     }
+
     if let Some(shared_obj_dir) = shared_obj_dir {
         let tmp = format!("-L{}", shared_obj_dir);
         command.push(tmp);
@@ -251,5 +237,132 @@ pub fn validate_proj_repo(path: &Path) -> Result<()> {
             "Invalid Project Directory: `src` is not a directory."
         ));
     }
+    Ok(())
+}
+
+
+/// Helper function that recursivly links all the source code files
+fn link_dep_files_h(
+    dep: &Dependnecy,
+    language: Language,
+    out_buffer: &mut Vec<String>,
+    packages: &mut HashMap<String, String>,
+    filenames: &mut HashMap<String, String>,
+) -> Result<()> {
+    let dep_id = format!("{}/{}", dep.owner(), dep.repo_name());
+
+    if let Some(_) = packages.get(&dep_id) {
+        // TODO: Handle version mismatches
+        return Ok(());
+    }
+
+    let source_dir = match dep.get_source_dir()? {
+        Some(s) => s,
+        None => return Err(anyhow!("{} has an ambiguous source dir", &dep.uri)),
+    };
+
+    packages.insert(dep_id, dep.version.clone());
+
+    let valid_ext = match language {
+        Language::C => [".c"].as_slice(),
+        Language::Cpp => [".c", ".cpp"].as_slice(),
+        Language::Cuda => [".c", ".cpp", ".cu"].as_slice(),
+    };
+
+
+    for file in source_dir.read_dir()? {
+        let file = match file {
+            Ok(r) => r,
+            Err(err) =>  {
+                dbg!(err);
+                continue;
+            }
+        };
+        if !file.file_type()?.is_file() {
+            continue;
+        }
+
+        let filename = file.file_name()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        if !valid_ext.iter().any(|&ext| filename.ends_with(ext)) {
+            continue;
+        }
+
+        if let Some(other_uri) = filenames.get(&filename) {
+            eprintln!("Fatal Error: Multiple dependencies have files of the same name:");
+            eprintln!("{}", dep.uri);
+            eprintln!("{}", other_uri);
+            eprintln!("Common File: {}", &filename);
+            std::process::exit(1);
+        }
+
+        filenames.insert(filename.clone(), dep.uri.clone());
+
+        let filepath = source_dir.join(&filename);
+        let filepath = filepath.to_str()
+            .unwrap()
+            .to_string();
+
+        out_buffer.push(filepath);
+    }
+
+
+    // Recursivley handle chain dependnecies
+    if let Some(kiln_cfg) = dep.get_kiln_cfg()? {
+        if let Some(chain_deps) = kiln_cfg.dependnecy {
+            for cd in &chain_deps {
+                link_dep_files_h(cd, language, out_buffer, packages, filenames)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Helper function that recursivly links all the header file directories
+fn link_dep_headers_h(
+    dep: &Dependnecy,
+    out_buffer: &mut Vec<String>,
+    packages: &mut HashSet<String>,
+) -> Result<()> {
+    let dep_id = format!("{}/{}", dep.owner(), dep.repo_name());
+
+    if packages.contains(&dep_id) {
+        return Ok(());
+    } else {
+        packages.insert(dep_id);
+    }
+
+    let include_dir = match dep.get_include_dir()? {
+        Some(s) => s,
+        None => return Err(anyhow!("{} has an ambiguous include dir", &dep.uri)),
+    };
+
+    let inc_dir_string = include_dir
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    if !include_dir.is_dir() {
+        eprintln!("Path to include directory points to a non-directory");
+        eprintln!("[{}]'s include_dir points to {}", &dep.uri, &inc_dir_string);
+        eprintln!("Change/add the `include_dir = \"relative/path/to/include\"` fild in Kiln.Toml to fix this");
+        std::process::exit(1);
+    }
+
+    out_buffer.push(inc_dir_string);
+    
+    // Recursivley handle chain dependnecies
+    if let Some(kiln_cfg) = dep.get_kiln_cfg()? {
+        if let Some(chain_deps) = kiln_cfg.dependnecy {
+            for cd in &chain_deps {
+                link_dep_headers_h(cd, out_buffer, packages)?;
+            }
+        }
+    }
+
     Ok(())
 }

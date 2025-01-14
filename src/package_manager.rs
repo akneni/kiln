@@ -1,14 +1,11 @@
-use crate::config::{self, Config, Dependnecy};
-use crate::constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE, PACKAGE_DIR};
+use crate::config::{self, Dependnecy, Config};
+use crate::constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE};
 use crate::kiln_package::{self, KilnPackageConfig};
-use crate::utils;
 use std::collections::HashSet;
-use std::env;
-use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::io::Write;
 use std::path::Path;
-use std::{fs, path::PathBuf, time::Duration};
+use std::{fs, time::Duration};
 
 use flate2::read::GzDecoder;
 use reqwest;
@@ -58,102 +55,8 @@ pub(super) struct Tag {
     pub tarball_url: String,
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct Package {
-    pub owner: String,
-    pub repo_name: String,
-    pub tag: Tag,
-}
-
-impl Package {
-    pub(super) fn get_global_path(&self) -> PathBuf {
-        let package_dir = (*PACKAGE_DIR).clone();
-        let package_name = format!("{}_{}_{}", &self.owner, &self.repo_name, &self.tag.name);
-        package_dir.join(&package_name)
-    }
-
-    pub(super) fn get_kiln_cfg(&self) -> Result<Option<Config>, PkgError> {
-        let cfg_file = self.get_global_path().join(CONFIG_FILE);
-        if !cfg_file.exists() {
-            return Ok(None);
-        }
-
-        let cfg = Config::from(&cfg_file)?;
-        Ok(Some(cfg))
-    }
-
-    pub(super) fn get_include_dir(&self) -> Result<PathBuf, PkgError> {
-        let p = self.get_global_path();
-
-        let config_path = p.join(CONFIG_FILE);
-        if config_path.exists() {
-            let config = Config::from(&config_path)?;
-            return Ok(Path::new(&config.get_include_dir()).to_path_buf());
-        }
-
-        let pgk_path = p.join(PACKAGE_CONFIG_FILE);
-        if pgk_path.exists() {
-            let pkg_cfg = KilnPackageConfig::from(&pgk_path)?;
-            return Ok(Path::new(&pkg_cfg.metadata.include_dir).to_path_buf());
-        }
-
-        Err(PkgError::PkgAmbiguous("".to_string()))
-    }
-
-    pub(super) fn get_source_dir(&self) -> Result<PathBuf, PkgError> {
-        let p = self.get_global_path();
-
-        let config_path = p.join(CONFIG_FILE);
-        if config_path.exists() {
-            let config = Config::from(&config_path)?;
-            return Ok(Path::new(&config.get_src_dir()).to_path_buf());
-        }
-
-        let pgk_path = p.join(PACKAGE_CONFIG_FILE);
-        if pgk_path.exists() {
-            let pkg_cfg = KilnPackageConfig::from(&pgk_path)?;
-            return Ok(Path::new(&pkg_cfg.metadata.source_dir).to_path_buf());
-        }
-
-        Err(PkgError::PkgAmbiguous("".to_string()))
-    }
-
-    pub(super) fn get_shared_obj_dir(&self) -> Result<PathBuf, PkgError> {
-        let p = self.get_global_path();
-        let so_path = Path::new("build").join("release");
-
-        let config_path = p.join(CONFIG_FILE);
-        if config_path.exists() {
-            return Ok(so_path);
-        }
-
-        Err(PkgError::PkgAmbiguous("".to_string()))
-    }
-
-    pub(super) fn get_static_lib_dir(&self) -> Result<PathBuf, PkgError> {
-        let p = self.get_global_path();
-        let so_path = Path::new("build").join("release");
-
-        let config_path = p.join(CONFIG_FILE);
-        if config_path.exists() {
-            return Ok(so_path);
-        }
-
-        Err(PkgError::PkgAmbiguous("".to_string()))
-    }
-
-    pub(super) fn get_dep_dir(&self, dep_type: DepType) -> Result<PathBuf, PkgError> {
-        match dep_type {
-            DepType::SourceCode => self.get_source_dir(),
-            DepType::HeaderFile => self.get_include_dir(),
-            DepType::SharedObject => self.get_shared_obj_dir(),
-            DepType::StaticLibrary => self.get_static_lib_dir(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
-enum DepType {
+pub(super) enum DepType {
     SourceCode,
     HeaderFile,
     SharedObject,
@@ -208,7 +111,13 @@ pub(super) fn parse_github_uri(uri: &str) -> Result<(&str, &str), PkgError> {
     Ok((owner, proj_name))
 }
 
-async fn find_tags(owner: &str, repo_name: &str) -> Result<Vec<Package>, PkgError> {
+pub(crate) fn uris_eq(uri1: &str, uri2: &str) -> Result<bool, PkgError> {
+    let (o1, r1) = parse_github_uri(uri1)?;
+    let (o2, r2) = parse_github_uri(uri2)?;
+    Ok(o1 == o2 && r1 == r2)
+}
+
+async fn find_tags(owner: &str, repo_name: &str) -> Result<Vec<Tag>, PkgError> {
     let endpoint = format!("https://api.github.com/repos/{}/{}/tags", owner, repo_name);
 
     // println!("Endpoint: {}", endpoint);
@@ -234,23 +143,20 @@ async fn find_tags(owner: &str, repo_name: &str) -> Result<Vec<Package>, PkgErro
     let tags: Vec<Tag> = serde_json::from_str(&body)?;
     let mut packages = vec![];
     for t in tags {
-        packages.push(Package {
-            owner: owner.to_string(),
-            repo_name: repo_name.to_string(),
-            tag: t,
-        });
+        
+        packages.push(t);
     }
-
+    
     Ok(packages)
 }
 
 /// Installs a package in the glocal cache. does NOT create a kiln-package.toml file
 /// If the package already exists locally, it does nothing
-async fn install_globally(package: &Package) -> Result<(), PkgError> {
+async fn install_globally(package: &Dependnecy, tag: &Tag) -> Result<(), PkgError> {
     let package_dir = package.get_global_path();
-    let package_name = format!(
+    let tarball_tmp_name = format!(
         "{}_{}_{}",
-        &package.owner, &package.repo_name, &package.tag.name
+        &package.owner(), &package.repo_name(), &package.version
     );
 
     if package_dir.exists() {
@@ -259,15 +165,15 @@ async fn install_globally(package: &Package) -> Result<(), PkgError> {
     fs::create_dir_all(&package_dir)?;
 
     let res = reqwest::Client::new()
-        .get(package.tag.tarball_url.clone())
+        .get(tag.tarball_url.clone())
         .header("User-Agent", "Kiln Build System")
         .send();
 
     let res = tokio::spawn(res);
 
     // Create a temporary directory
-    let tmp = TempDir::new()?;
-    let tmp_file = tmp.path().join(format!("{}.tar.gz", package_name));
+    let tmp_dir = TempDir::new()?;
+    let tmp_file = tmp_dir.path().join(format!("{}.tar.gz", tarball_tmp_name));
 
     let res = res.await??;
     if !res.status().is_success() {
@@ -293,46 +199,6 @@ async fn install_globally(package: &Package) -> Result<(), PkgError> {
     unpack_without_top_folder(tar, &package_dir)?;
 
     Ok(())
-}
-
-/// Generates the `kiln-package.toml' file
-/// PRECONDITION: This package must be locally installed
-/// Returns false if the package file could not be infered
-fn generate_package_file(package: &Package) -> Result<(), PkgError> {
-    let package_dir = package.get_global_path();
-
-    let kiln_pkg_toml = package_dir.join(PACKAGE_CONFIG_FILE);
-    if kiln_pkg_toml.exists() {
-        return Ok(());
-    }
-
-    let kiln_config = package_dir.join(CONFIG_FILE);
-    if kiln_config.exists() {
-        let config = config::Config::from(&kiln_config)?;
-
-        let pkg_cfg =
-            kiln_package::KilnPackageConfig::new(config.get_include_dir(), config.get_src_dir());
-
-        let pkg_cfg = toml::to_string_pretty(&pkg_cfg)?;
-        fs::write(kiln_pkg_toml, pkg_cfg)?;
-        return Ok(());
-    }
-
-    let include_dir = package_dir.join("include");
-    let source_dir = package_dir.join("src");
-
-    if include_dir.exists() && source_dir.exists() {
-        let pkg_cfg =
-            kiln_package::KilnPackageConfig::new("include".to_string(), "src".to_string());
-
-        let pkg_cfg = toml::to_string_pretty(&pkg_cfg)?;
-        fs::write(kiln_pkg_toml, pkg_cfg)?;
-        return Ok(());
-    }
-
-    Err(PkgError::PkgAmbiguous(
-        "Package does not exist.".to_string(),
-    ))
 }
 
 /// Takes care of the entire installation process (High Level Function)
@@ -383,7 +249,8 @@ pub(super) async fn resolve_adding_package(
 
         for f in futures {
             let (chain_deps, cfg) = f.await??;
-            config.dependnecy.as_mut().unwrap().push(cfg);
+            let kiln_dcf_deps = config.dependnecy.as_mut().unwrap();
+            config::Dependnecy::add_dependency(kiln_dcf_deps, cfg);
             deps.extend(chain_deps);
         }
     }
@@ -392,7 +259,7 @@ pub(super) async fn resolve_adding_package(
 }
 
 /// Takes care of the remote to global to local instalation process
-/// This recursive helper function to [fn resolve_adding_package]
+/// This pseudo-recursive helper function to [fn resolve_adding_package]
 async fn add_package(
     owner: String,
     proj_name: String,
@@ -409,33 +276,30 @@ async fn add_package(
         )));
     }
 
-    let mut pkg: &Package = &tags[0];
+    let mut tag: &Tag = &tags[0];
     if let Some(v) = version {
         let mut assigned = false;
         for t in &tags {
-            if t.tag.name == v {
-                pkg = t;
+            if t.name == v {
+                tag = t;
                 assigned = true;
-                break;
             }
         }
         if !assigned {
-            return Err(PkgError::UsrErr(format!(
-                "Version {} doesn't exist for {}",
-                v, repo_name
-            )));
+            let msg = format!("Version {} does not exist for https:://{}/{}", v, owner, proj_name);
+            return Err(PkgError::UsrErr(msg));
         }
-    } else {
-        pkg = tags
-            .iter()
-            .max_by(|&a, &b| a.tag.name.cmp(&b.tag.name))
-            .unwrap();
+    }
+    else {
+        tag = tags.last().unwrap();
     }
 
-    install_globally(pkg).await?;
-    let res = generate_package_file(pkg);
+    let pkg = Dependnecy::new(&owner, &proj_name, &tag.name);
 
-    if let Err(PkgError::PkgAmbiguous(_)) = res {
+    install_globally(&pkg, &tag).await?;
+
+
+    if let None = pkg.get_include_dir()? {
         let mut stdin_buf = String::new();
         let include_dir: String;
         let source_dir: String;
@@ -455,39 +319,29 @@ async fn add_package(
 
         let out_path = pkg.get_global_path().join(PACKAGE_CONFIG_FILE);
 
-        #[cfg(debug_assertions)]
-        {
-            println!("out_path: {:?}", out_path.to_str());
-        }
-
         fs::write(out_path, pkg_cfg_str)?;
-    } else if let Err(e) = res {
-        return Err(e);
     }
 
-    copy_deps_global_to_local(pkg, DepType::HeaderFile)?;
-    copy_deps_global_to_local(pkg, DepType::SourceCode)?;
-    copy_deps_global_to_local(pkg, DepType::SharedObject)?;
-    copy_deps_global_to_local(pkg, DepType::StaticLibrary)?;
+    let include_dir = pkg
+        .get_include_dir()?
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
 
-    let include_dir = match pkg.get_include_dir() {
-        Ok(r) => Some(r.to_str().unwrap().to_string()),
-        Err(_) => None,
-    };
+    let source_dir = pkg
+        .get_source_dir()?
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
 
-    let source_dir = match pkg.get_source_dir() {
-        Ok(r) => Some(r.to_str().unwrap().to_string()),
-        Err(_) => None,
-    };
+    let mut pkg = pkg;
 
-    let kiln_toml_dep = Dependnecy {
-        uri: repo_name.clone(),
-        version: pkg.tag.name.clone(),
-        include_dir,
-        source_dir,
-        shared_object_dir: None,
-        static_lib_dir: None,
-    };
+    if !pkg.get_global_path().join(CONFIG_FILE).exists() {
+        pkg.include_dir = Some(include_dir);
+        pkg.source_dir = Some(source_dir);
+    }
 
     let mut chain_dep_ids = vec![];
 
@@ -507,119 +361,54 @@ async fn add_package(
         }
     }
 
-    Ok((chain_dep_ids, kiln_toml_dep))
+    Ok((chain_dep_ids, pkg))
 }
 
-/// Copies all the files from their globally installed location to their local spot in the project
-/// This function is Atomic: it will remove all files it if an error occurs.
-fn copy_deps_global_to_local(pkg: &Package, dep_type: DepType) -> Result<(), PkgError> {
-    let file_ext = match dep_type {
-        DepType::SourceCode => [".c", ".cpp", ".cu"].as_slice(),
-        DepType::HeaderFile => [".h", ".hpp", ".cuh"].as_slice(),
-        DepType::SharedObject => [".so", ".dylib", ".dll"].as_slice(),
-        DepType::StaticLibrary => [".a", ".lib"].as_slice(),
-    };
 
-    let cwd = env::current_dir()?;
+/// Ensures that all the packages listed in the Kiln.toml config file are
+/// all installed globally. Any that are listed but are not installed will be 
+/// returned
+pub(super) fn check_pkgs<'a>(config: &'a Config) -> Vec<[String; 3]> {
+    let mut not_installed = vec![];
+    let mut pkgs_visited: HashSet<String> = HashSet::new();
 
-    let local_source_dir = cwd.join("dependencies").join(dep_type);
-    if !local_source_dir.exists() {
-        fs::create_dir_all(&local_source_dir)?;
-    }
-
-    match pkg.get_dep_dir(dep_type) {
-        Ok(global_dep_dir_relative) => {
-            let mut global_dep_dir = pkg.get_global_path();
-            let gddr_str = global_dep_dir_relative.to_str().unwrap();
-
-            if !matches!(gddr_str.trim(), "" | "." | "./") {
-                global_dep_dir = global_dep_dir.join(global_dep_dir_relative);
-            }
-
-            if !global_dep_dir.exists() {
-                if matches!(dep_type, DepType::SharedObject | DepType::StaticLibrary) {
-                    return Ok(());
-                } else {
-                    let msg = format!("global dep dir doesn't exist: `dep_type = {:?}`", dep_type);
-                    return Err(PkgError::Unknown(msg));
-                }
-            }
-
-            for f in global_dep_dir.read_dir()? {
-                let f = match f {
-                    Ok(r) => r,
-                    Err(e) => {
-                        let msg = format!("\nIterating over directory failed: {:?}", e);
-                        dbg!(msg);
-                        continue;
-                    }
-                };
-                let tmp = f.file_name();
-                let g_filename = match tmp.to_str() {
-                    Some(s) => s,
-                    None => {
-                        let msg = "Received `None` from OsStr.as_str()";
-                        dbg!(msg);
-                        continue;
-                    }
-                };
-
-                if !file_ext.iter().any(|&i| g_filename.ends_with(i)) {
-                    let msg = format!("File `{}` doesn't have a valid file extention", g_filename);
-                    dbg!(msg);
-                    continue;
-                }
-
-                let global_p = global_dep_dir.join(g_filename);
-                let new_p = local_source_dir.join(g_filename);
-                if new_p.exists() {
-                    eprintln!(
-                        "File {} already exists. (Multiple packages have files with this same name)",
-                        g_filename
-                    );
-                    eprintln!(
-                        "Aborting import of https://githib.com/{}/{}",
-                        pkg.owner, pkg.repo_name
-                    );
-
-                    // Remove all files we've added to prevent an invalid state
-                    remove_deps_local(pkg, dep_type)?;
-
-                    std::process::exit(1);
-                }
-
-                dbg!(&global_p);
-
-                fs::copy(global_p, new_p)?;
-            }
-        }
-        Err(e) => {
-            let msg = format!("Global source dir could not be found: {}", e);
-            dbg!(msg);
+    if let Some(deps) = &config.dependnecy {
+        for dep in deps {
+            check_pkg_h(dep, &mut not_installed, &mut pkgs_visited);
         }
     }
 
-    Ok(())
+    not_installed
 }
 
-fn remove_deps_local(pkg: &Package, dep_type: DepType) -> Result<(), PkgError> {
-    let cwd = env::current_dir()?;
+fn check_pkg_h(dep: &Dependnecy, output: &mut Vec<[String; 3]>, pkgs_visited: &mut HashSet<String>) {
+    if pkgs_visited.contains(dep.uri.as_str()) {
+        return;
+    }
+    pkgs_visited.insert(dep.uri.clone());
 
-    let global_source_dir = cwd.join("dependencies").join(dep_type);
-    let file_names: Vec<std::ffi::OsString> =
-        global_source_dir.iter().map(|i| i.to_os_string()).collect();
+    if !dep.get_global_path().exists() {
+        let pkg = [
+            dep.owner().to_string(),
+            dep.repo_name().to_string(),
+            dep.version.clone(),
+        ];
 
-    if let Ok(local_source_dir) = pkg.get_source_dir() {
-        for f in local_source_dir.iter() {
-            let f = f.to_os_string();
-            if file_names.contains(&f) {
-                fs::remove_file(&f)?;
+        if !output.contains(&pkg) {
+            output.push(pkg);
+        }
+        return;
+    }
+
+    if let Some(kiln_cfg) = dep.get_kiln_cfg().unwrap() {
+        if let Some(chain_deps) = &kiln_cfg.dependnecy {
+            for chain_dep in chain_deps {
+                check_pkg_h(chain_dep, output, pkgs_visited);
             }
         }
     }
-
-    Ok(())
 }
+
 
 fn unpack_without_top_folder<R: std::io::Read>(reader: R, dst: &Path) -> Result<(), PkgError> {
     let mut archive = Archive::new(reader);

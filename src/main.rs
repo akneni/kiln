@@ -14,7 +14,7 @@ use clap::Parser;
 use config::Config;
 use constants::{CONFIG_FILE, PACKAGE_DIR, SEPETATOR};
 use package_manager::PkgError;
-use std::{env, fs, path::Path, process};
+use std::{env, fs, path::Path, process, time};
 use utils::Language;
 use valgrind::VgOutput;
 
@@ -101,14 +101,14 @@ async fn main() {
                 process::exit(1);
             }
         }
-        cli::Commands::Add { dep } => {
+        cli::Commands::Add { dep_uri } => {
             if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
                 println!("{}", e);
                 process::exit(1);
             }
             let mut config = config.unwrap();
-            let (owner, proj_name) = package_manager::parse_github_uri(&dep).unwrap();
 
+            let (owner, proj_name) = package_manager::parse_github_uri(&dep_uri).unwrap();
             let res = package_manager::resolve_adding_package(&mut config, owner, proj_name, None);
 
             if let Err(err) = res.await {
@@ -143,6 +143,7 @@ async fn main() {
                 process::exit(1);
             }
             let config = config.unwrap();
+            handle_check_installs(&config).await;
 
             if let Err(e) = handle_warnings(&config) {
                 eprintln!("An error occured during static analysis:\n{}", e);
@@ -163,6 +164,7 @@ async fn main() {
                 process::exit(1);
             }
             let config = config.unwrap();
+            handle_check_installs(&config).await;
 
             if let Err(e) = handle_warnings(&config) {
                 eprintln!("An error occured during static analysis:\n{}", e);
@@ -253,14 +255,14 @@ fn handle_build(profile: &str, config: &Config) -> Result<()> {
 
     let lang = Language::new(&config.project.language).unwrap();
     let mut link_file = vec![];
-    build_sys::link_dep_files(&cwd, lang, &mut link_file)?;
+    build_sys::link_dep_files(&config, lang, &mut link_file)?;
     build_sys::link_proj_files(&config, &cwd, lang, &mut link_file)
         .map_err(|err| anyhow!("Failed to link source files: {}", err))?;
 
     let link_lib = build_sys::link_sys_lib(&cwd);
     let opt_flags = build_sys::opt_flags(&profile, config).unwrap();
 
-    let header_dir = build_sys::link_dep_headers(&cwd)?;
+    let header_dirs = build_sys::link_dep_headers(&config)?;
     let so_dir = build_sys::link_dep_shared_obj(&cwd)?;
 
     let compilation_cmd = build_sys::full_compilation_cmd(
@@ -268,7 +270,7 @@ fn handle_build(profile: &str, config: &Config) -> Result<()> {
         &profile,
         &link_file,
         &link_lib,
-        &header_dir,
+        &header_dirs,
         &so_dir,
         &opt_flags,
     )?;
@@ -386,4 +388,25 @@ fn handle_headers(config: &Config) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Checks the deps listed in Kiln.Toml config for any that aren't installed globally.
+/// If it fins finds any such packages, it installs them. 
+async fn handle_check_installs(config: &Config) {
+    let timer = time::Instant::now();
+
+    let mut config = config.clone();
+    let not_installed = package_manager::check_pkgs(&config);
+
+    if not_installed.len() > 1 {
+        dbg!(&not_installed);
+    }
+
+    for i in not_installed {
+        package_manager::resolve_adding_package(&mut config, &i[0], &i[1], Some(&i[2]))
+            .await
+            .unwrap();
+    }
+
+    dbg!(timer.elapsed());
 }

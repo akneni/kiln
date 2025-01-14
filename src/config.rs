@@ -1,7 +1,10 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path};
+use std::{fs, path::{Path, PathBuf}};
 use toml;
+
+use crate::{constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE, PACKAGE_DIR}, package_manager::{self, DepType}, utils};
+use crate::kiln_package::KilnPackageConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -149,11 +152,152 @@ impl BuildOptions {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Dependnecy {
+pub(super) struct Dependnecy {
     pub uri: String,
     pub version: String,
     pub include_dir: Option<String>,
     pub source_dir: Option<String>,
     pub shared_object_dir: Option<String>,
     pub static_lib_dir: Option<String>,
+}
+
+impl Dependnecy {
+    pub(super) fn new(owner: &str, repo_name: &str, version: &str) -> Self {
+        Dependnecy {
+            uri: format!("https://github.com/{}/{}.git", owner, repo_name),
+            version: version.to_string(),
+            ..Dependnecy::default()
+        }
+    }
+
+    pub(super) fn owner(&self) -> &str {
+        let (owner, _repo) = package_manager::parse_github_uri(&self.uri).unwrap();
+        owner
+    }
+
+    pub(super) fn repo_name(&self) -> &str {
+        let (_owner, repo) = package_manager::parse_github_uri(&self.uri).unwrap();
+        repo
+    }
+
+    pub(super) fn get_global_path(&self) -> PathBuf {
+        let (owner, repo) = package_manager::parse_github_uri(&self.uri).unwrap();
+
+        (*PACKAGE_DIR)
+            .join(owner)
+            .join(repo)
+            .join(&self.version)
+    }
+
+    pub(super) fn get_kiln_cfg(&self) -> Result<Option<Config>> {
+        let cfg_file = self.get_global_path().join(CONFIG_FILE);
+        if !cfg_file.exists() {
+            return Ok(None);
+        }
+
+        let cfg = Config::from(&cfg_file)?;
+        Ok(Some(cfg))
+    }
+
+    pub(super) fn get_include_dir(&self) -> Result<Option<PathBuf>> {
+        let p = self.get_global_path();
+
+        if let Some(include_dir) = &self.include_dir {
+            return Ok(Some(utils::join_rel_path(&p, &include_dir)));
+        }
+
+        let config_path = p.join(CONFIG_FILE);
+        if config_path.exists() {
+            let config = Config::from(&config_path)?;
+            return Ok(Some(p.join(&config.get_include_dir())));
+        }
+
+        let pgk_path = p.join(PACKAGE_CONFIG_FILE);
+        if pgk_path.exists() {
+            let pkg_cfg = KilnPackageConfig::from(&pgk_path)?;
+            return Ok(Some(p.join(&pkg_cfg.metadata.include_dir)));
+        }
+
+        Ok(None)
+    }
+
+    pub(super) fn get_source_dir(&self) -> Result<Option<PathBuf>> {
+        let p = self.get_global_path();
+
+        if let Some(source_dir) = &self.source_dir {
+            return Ok(Some(utils::join_rel_path(&p, &source_dir)));
+        }
+
+        let config_path = p.join(CONFIG_FILE);
+        if config_path.exists() {
+            let config = Config::from(&config_path)?;
+            return Ok(Some(p.join(&config.get_src_dir())));
+        }
+
+        let pgk_path = p.join(PACKAGE_CONFIG_FILE);
+        if pgk_path.exists() {
+            let pkg_cfg = KilnPackageConfig::from(&pgk_path)?;
+            return Ok(Some(p.join(&pkg_cfg.metadata.source_dir)));
+        }
+
+        Ok(None)
+    }
+
+    pub(super) fn get_shared_obj_dir(&self) -> Result<Option<PathBuf>> {
+        let p = self.get_global_path();
+        let so_path = Path::new("build").join("release");
+
+        let config_path = p.join(CONFIG_FILE);
+        if config_path.exists() {
+            return Ok(Some(p.join(so_path)));
+        }
+
+        Ok(None)
+    }
+
+    pub(super) fn get_static_lib_dir(&self) -> Result<Option<PathBuf>> {
+        let p = self.get_global_path();
+        let sl_path = Path::new("build").join("release");
+
+        let config_path = p.join(CONFIG_FILE);
+        if config_path.exists() {
+            return Ok(Some(p.join(sl_path)));
+        }
+
+        Ok(None)
+    }
+
+
+    /// Adds a depdendnecy if it doesn't already exist
+    /// Returns true if the dependency already exists
+    pub(super) fn add_dependency(deps: &mut Vec<Dependnecy>, new_dep: Dependnecy) -> bool {
+        for dep in deps.iter() {
+            if *dep == new_dep {
+                return true;
+            }
+        }
+        deps.push(new_dep);
+        false
+    }
+
+    fn get_dep_dir(&self, dep_type: DepType) -> Result<Option<PathBuf>> {
+        match dep_type {
+            DepType::SourceCode => self.get_source_dir(),
+            DepType::HeaderFile => self.get_include_dir(),
+            DepType::SharedObject => self.get_shared_obj_dir(),
+            DepType::StaticLibrary => self.get_static_lib_dir(),
+        }
+    }
+
+}
+
+
+
+/// Computes weak equality. Evaluates to true if the github uri has the same
+/// project name and owner
+impl PartialEq for Dependnecy {
+    fn eq(&self, other: &Self) -> bool {
+        self.owner() == other.owner() &&
+        self.repo_name() == other.repo_name()
+    }
 }

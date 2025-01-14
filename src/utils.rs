@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 
 use anyhow::{anyhow, Result};
@@ -169,21 +169,10 @@ pub fn print_warning(
     println!("{}\n", err_msg);
 }
 
-
-pub(super) fn create_symlink<T: AsRef<Path>>(src_file: T, dst_link: T) -> Result<(), std::io::Error> {
-    #[cfg(target_family = "unix")]
-    {
-        std::os::unix::fs::symlink(src_file, dst_link)?;
+pub(super) fn join_rel_path(abs_path: impl AsRef<Path>, rel_path: &str) -> PathBuf {
+    let path = abs_path.as_ref();
+    match rel_path {
+        "" | "." | "./" => path.to_path_buf(),
+        _ => path.join(rel_path)
     }
-    #[cfg(target_family = "windows")]
-    {
-        if original.is_file() {
-            std::os::windows::fs::symlink_file(src_file, dst_link)
-        } else if original.is_dir() {
-            std::os::windows::fs::symlink_dir(src_file, dst_link)
-        } else {
-            Err(io::Error::new(io::ErrorKind::Other, "Original path is neither a file nor a directory."))
-        }
-    }
-    Ok(())
 }

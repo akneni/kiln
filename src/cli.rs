@@ -25,7 +25,7 @@ pub enum Commands {
     },
     GenHeaders,
     Add {
-        dep: String,
+        dep_uri: String,
     },
     PurgeGlobalInstalls,
 

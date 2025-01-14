@@ -398,6 +398,7 @@ async fn handle_check_installs(config: &Config) {
     let mut config = config.clone();
     let not_installed = package_manager::check_pkgs(&config);
 
+    #[cfg(debug_assertions)]
     if not_installed.len() > 1 {
         dbg!(&not_installed);
     }

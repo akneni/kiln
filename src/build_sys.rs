@@ -42,12 +42,11 @@ pub fn create_project(path: &Path, lang: Language) -> Result<()> {
 
 /// Links all the files in the project together
 pub fn link_proj_files(
-    config: &Config, 
-    proj_dir: &Path, 
+    config: &Config,
+    proj_dir: &Path,
     language: Language,
-    out_buffer: &mut Vec<String>
+    out_buffer: &mut Vec<String>,
 ) -> Result<()> {
-
     let source_dir = proj_dir.join(config.get_src_dir());
 
     let source_dir_iter = source_dir.read_dir().map_err(|err| {
@@ -64,10 +63,7 @@ pub fn link_proj_files(
             let filename = file.to_str().unwrap();
             if filename.ends_with(language.file_ext()) {
                 let filepath = source_dir.join(filename);
-                let filepath = filepath
-                    .to_str()
-                    .unwrap()
-                    .to_string();
+                let filepath = filepath.to_str().unwrap().to_string();
 
                 out_buffer.push(filepath);
             }
@@ -114,7 +110,6 @@ pub(super) fn link_dep_files(
     language: Language,
     out_buffer: &mut Vec<String>,
 ) -> Result<()> {
-    
     let code_deps = proj_dir.join("dependencies").join("source_code");
     if !code_deps.exists() {
         return Ok(());
@@ -160,10 +155,7 @@ pub(super) fn link_dep_headers(proj_dir: &Path) -> Result<Option<String>> {
     if !headers_dir.exists() {
         return Ok(None);
     }
-    let headers_path = headers_dir
-        .to_str()
-        .unwrap()
-        .to_string();
+    let headers_path = headers_dir.to_str().unwrap().to_string();
     Ok(Some(headers_path))
 }
 
@@ -172,10 +164,7 @@ pub(super) fn link_dep_shared_obj(proj_dir: &Path) -> Result<Option<String>> {
     if !headers_dir.exists() {
         return Ok(None);
     }
-    let headers_path = headers_dir
-        .to_str()
-        .unwrap()
-        .to_string();
+    let headers_path = headers_dir.to_str().unwrap().to_string();
     Ok(Some(headers_path))
 }
 

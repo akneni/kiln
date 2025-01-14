@@ -116,6 +116,77 @@ impl Package {
 
         Err(PkgError::PkgAmbiguous("".to_string()))
     }
+
+    pub(super) fn get_shared_obj_dir(&self) -> Result<PathBuf, PkgError> {
+        let p = self.get_global_path();
+        let so_path = Path::new("build").join("release");
+
+        let config_path = p.join(CONFIG_FILE);
+        if config_path.exists() {
+            return Ok(so_path);
+        }
+
+        Err(PkgError::PkgAmbiguous("".to_string()))
+    }
+
+    pub(super) fn get_static_lib_dir(&self) -> Result<PathBuf, PkgError> {
+        let p = self.get_global_path();
+        let so_path = Path::new("build").join("release");
+
+        let config_path = p.join(CONFIG_FILE);
+        if config_path.exists() {
+            return Ok(so_path);
+        }
+
+        Err(PkgError::PkgAmbiguous("".to_string()))
+    }
+
+    pub(super) fn get_dep_dir(&self, dep_type: DepType) -> Result<PathBuf, PkgError> {
+        match dep_type {
+            DepType::SourceCode => self.get_source_dir(),
+            DepType::HeaderFile => self.get_include_dir(),
+            DepType::SharedObject => self.get_shared_obj_dir(),
+            DepType::StaticLibrary => self.get_static_lib_dir(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DepType {
+    SourceCode,
+    HeaderFile,
+    SharedObject,
+    StaticLibrary,
+}
+
+impl From<&str> for DepType {
+    fn from(value: &str) -> Self {
+        match value {
+            "source_code" => Self::SourceCode,
+            "header_file" | "header_files" => Self::HeaderFile,
+            "shared_object" | "shared_objects" => Self::SharedObject,
+            "static_libraries" | "static_library" => Self::StaticLibrary,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Into<&str> for DepType {
+    fn into(self) -> &'static str {
+        match self {
+            DepType::HeaderFile => "header_files",
+            DepType::SourceCode => "source_code",
+            DepType::SharedObject => "shared_objects",
+            DepType::StaticLibrary => "static_libraries",
+        }
+    }
+}
+
+impl AsRef<Path> for DepType {
+    fn as_ref(&self) -> &Path {
+        let path: &str = (*self).into();
+        Path::new(path)
+    }
 }
 
 pub(super) fn parse_github_uri(uri: &str) -> Result<(&str, &str), PkgError> {
@@ -393,10 +464,10 @@ async fn add_package(
         return Err(e);
     }
 
-    copy_deps_global_to_local(pkg, "header_files")?;
-    copy_deps_global_to_local(pkg, "source_code")?;
-    copy_deps_global_to_local(pkg, "shared_objects")?;
-    copy_deps_global_to_local(pkg, "static_libraries")?;
+    copy_deps_global_to_local(pkg, DepType::HeaderFile)?;
+    copy_deps_global_to_local(pkg, DepType::SourceCode)?;
+    copy_deps_global_to_local(pkg, DepType::SharedObject)?;
+    copy_deps_global_to_local(pkg, DepType::StaticLibrary)?;
 
     let include_dir = match pkg.get_include_dir() {
         Ok(r) => Some(r.to_str().unwrap().to_string()),
@@ -419,12 +490,17 @@ async fn add_package(
 
     let mut chain_dep_ids = vec![];
 
-    if let Some(cfg) = pkg.get_kiln_cfg()? {
+    if let Some(mut cfg) = pkg.get_kiln_cfg()? {
+        if let None = cfg.dependnecy {
+            cfg.dependnecy = Some(vec![]);
+        }
         let chain_deps = cfg.dependnecy.as_ref().unwrap();
         for chain_dep in chain_deps {
+            let (chain_owner, chain_repo) = parse_github_uri(&chain_dep.uri)?;
+
             chain_dep_ids.push([
-                owner.to_string(),
-                proj_name.to_string(),
+                chain_owner.to_string(),
+                chain_repo.to_string(),
                 chain_dep.version.clone(),
             ]);
         }
@@ -435,16 +511,12 @@ async fn add_package(
 
 /// Copies all the files from their globally installed location to their local spot in the project
 /// This function is Atomic: it will remove all files it if an error occurs.
-fn copy_deps_global_to_local(pkg: &Package, dep_type: &str) -> Result<(), PkgError> {
+fn copy_deps_global_to_local(pkg: &Package, dep_type: DepType) -> Result<(), PkgError> {
     let file_ext = match dep_type {
-        "source_code" => [".c", ".cpp", ".cu"].as_slice(),
-        "header_files" => [".h", ".hpp", ".cuh"].as_slice(),
-        "shared_objects" => [".so", ".dylib", ".dll"].as_slice(),
-        "static_libraries" => [".a", ".lib"].as_slice(),
-        _ => {
-            eprintln!("[fn copy_files] Invalid dep type rceived: {}", dep_type);
-            std::process::exit(1);
-        }
+        DepType::SourceCode => [".c", ".cpp", ".cu"].as_slice(),
+        DepType::HeaderFile => [".h", ".hpp", ".cuh"].as_slice(),
+        DepType::SharedObject => [".so", ".dylib", ".dll"].as_slice(),
+        DepType::StaticLibrary => [".a", ".lib"].as_slice(),
     };
 
     let cwd = env::current_dir()?;
@@ -454,29 +526,30 @@ fn copy_deps_global_to_local(pkg: &Package, dep_type: &str) -> Result<(), PkgErr
         fs::create_dir_all(&local_source_dir)?;
     }
 
-    match pkg.get_source_dir() {
-        Ok(global_source_dir_relative) => {
-            let mut global_source_dir = pkg.get_global_path();
+    match pkg.get_dep_dir(dep_type) {
+        Ok(global_dep_dir_relative) => {
+            let mut global_dep_dir = pkg.get_global_path();
+            let gddr_str = global_dep_dir_relative.to_str().unwrap();
 
-            let gsdr_str = global_source_dir_relative.to_str().unwrap();
-
-            if !matches!(gsdr_str.trim(), "" | "." | "./") {
-                global_source_dir = global_source_dir.join(global_source_dir_relative);
+            if !matches!(gddr_str.trim(), "" | "." | "./") {
+                global_dep_dir = global_dep_dir.join(global_dep_dir_relative);
             }
 
-            #[cfg(debug_assertions)]
-            if dep_type == "header_files" {
-                dbg!(&global_source_dir);
-                dbg!(&local_source_dir);
+            if !global_dep_dir.exists() {
+                if matches!(dep_type, DepType::SharedObject | DepType::StaticLibrary) {
+                    return Ok(());
+                } else {
+                    let msg = format!("global dep dir doesn't exist: `dep_type = {:?}`", dep_type);
+                    return Err(PkgError::Unknown(msg));
+                }
             }
-            
-            for f in global_source_dir.read_dir()? {
+
+            for f in global_dep_dir.read_dir()? {
                 let f = match f {
                     Ok(r) => r,
                     Err(e) => {
-                        eprintln!("\nIterating over directory failed");
-                        dbg!(e);
-                        eprintln!();
+                        let msg = format!("\nIterating over directory failed: {:?}", e);
+                        dbg!(msg);
                         continue;
                     }
                 };
@@ -484,21 +557,19 @@ fn copy_deps_global_to_local(pkg: &Package, dep_type: &str) -> Result<(), PkgErr
                 let g_filename = match tmp.to_str() {
                     Some(s) => s,
                     None => {
-                        #[cfg(debug_assertions)]
-                        {
-                            println!(
-                                "Received `None` from OsStr.as_str() [fn resolve_adding_package]"
-                            );
-                        }
+                        let msg = "Received `None` from OsStr.as_str()";
+                        dbg!(msg);
                         continue;
                     }
                 };
 
                 if !file_ext.iter().any(|&i| g_filename.ends_with(i)) {
+                    let msg = format!("File `{}` doesn't have a valid file extention", g_filename);
+                    dbg!(msg);
                     continue;
                 }
 
-                let global_p = global_source_dir.join(g_filename);
+                let global_p = global_dep_dir.join(g_filename);
                 let new_p = local_source_dir.join(g_filename);
                 if new_p.exists() {
                     eprintln!(
@@ -516,22 +587,20 @@ fn copy_deps_global_to_local(pkg: &Package, dep_type: &str) -> Result<(), PkgErr
                     std::process::exit(1);
                 }
 
-                #[cfg(debug_assertions)] println!("copying {:?}", global_p);
+                dbg!(&global_p);
                 fs::copy(global_p, new_p)?;
             }
         }
         Err(e) => {
-            #[cfg(debug_assertions)]
-            {
-                eprintln!("Global source dir could not be found: {}", e);
-            }
+            let msg = format!("Global source dir could not be found: {}", e);
+            dbg!(msg);
         }
     }
 
     Ok(())
 }
 
-fn remove_deps_local(pkg: &Package, dep_type: &str) -> Result<(), PkgError> {
+fn remove_deps_local(pkg: &Package, dep_type: DepType) -> Result<(), PkgError> {
     let cwd = env::current_dir()?;
 
     let global_source_dir = cwd.join("dependencies").join(dep_type);

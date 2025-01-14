@@ -13,6 +13,7 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use config::Config;
 use constants::{CONFIG_FILE, PACKAGE_DIR, SEPETATOR};
+use package_manager::PkgError;
 use std::{env, fs, path::Path, process};
 use utils::Language;
 use valgrind::VgOutput;
@@ -110,7 +111,23 @@ async fn main() {
 
             let res = package_manager::resolve_adding_package(&mut config, owner, proj_name, None);
 
-            res.await.unwrap();
+            if let Err(err) = res.await {
+                match &err {
+                    PkgError::Reqwest(e) => {
+                        let e_str = format!("{}", e);
+                        if e_str.contains("TimedOut") {
+                            dbg!(e);
+                            eprintln!("Request timed out, please check internet connection");
+                        } else {
+                            eprintln!("An unknown error occured:\n{}", err);
+                        }
+                    }
+                    _ => {
+                        eprintln!("An unknown error occured:\n{}", err);
+                    }
+                }
+                std::process::exit(1);
+            }
 
             config.to_disk(Path::new(constants::CONFIG_FILE));
         }
@@ -246,18 +263,20 @@ fn handle_build(profile: &str, config: &Config) -> Result<()> {
     let header_dir = build_sys::link_dep_headers(&cwd)?;
     let so_dir = build_sys::link_dep_shared_obj(&cwd)?;
 
-    let compilation_cmd =
-        build_sys::full_compilation_cmd(
-            config, 
-            &profile, 
-            &link_file, 
-            &link_lib,
-            &header_dir,
-            &so_dir,
-            &opt_flags
-        )?;
+    let compilation_cmd = build_sys::full_compilation_cmd(
+        config,
+        &profile,
+        &link_file,
+        &link_lib,
+        &header_dir,
+        &so_dir,
+        &opt_flags,
+    )?;
 
-    dbg!(compilation_cmd.join(" "));
+    #[cfg(debug_assertions)]
+    {
+        println!("{}\n\n", compilation_cmd.join(" "));
+    }
 
     let child = process::Command::new(&compilation_cmd[0])
         .args(&compilation_cmd[1..])

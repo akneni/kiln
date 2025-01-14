@@ -149,6 +149,7 @@ pub fn expand_user(path: &str) -> String {
 }
 
 /// Prints a warning message in a standardized way
+/// This is used to print warnings related to static analysis
 pub fn print_warning(
     warning_source: &str,
     filename: &str,
@@ -166,4 +167,23 @@ pub fn print_warning(
         msg,
     );
     println!("{}\n", err_msg);
+}
+
+
+pub(super) fn create_symlink<T: AsRef<Path>>(src_file: T, dst_link: T) -> Result<(), std::io::Error> {
+    #[cfg(target_family = "unix")]
+    {
+        std::os::unix::fs::symlink(src_file, dst_link)?;
+    }
+    #[cfg(target_family = "windows")]
+    {
+        if original.is_file() {
+            std::os::windows::fs::symlink_file(src_file, dst_link)
+        } else if original.is_dir() {
+            std::os::windows::fs::symlink_dir(src_file, dst_link)
+        } else {
+            Err(io::Error::new(io::ErrorKind::Other, "Original path is neither a file nor a directory."))
+        }
+    }
+    Ok(())
 }

@@ -1,6 +1,7 @@
 use crate::config::{self, Config, Dependnecy};
 use crate::constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE, PACKAGE_DIR};
 use crate::kiln_package::{self, KilnPackageConfig};
+use crate::utils;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsStr;
@@ -588,6 +589,7 @@ fn copy_deps_global_to_local(pkg: &Package, dep_type: DepType) -> Result<(), Pkg
                 }
 
                 dbg!(&global_p);
+
                 fs::copy(global_p, new_p)?;
             }
         }

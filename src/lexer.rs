@@ -125,6 +125,8 @@ impl<'a> Token<'a> {
 }
 
 pub fn clean_source_code(code: String) -> String {
+    // TDOD: skip over any `//` of `/*` that are in string literals
+
     let mut cleaned = String::with_capacity(code.len());
 
     let mut in_block_comment = false; // whether we're inside /* ... */
@@ -135,36 +137,39 @@ pub fn clean_source_code(code: String) -> String {
         }
         if in_block_comment {
             if let Some(bc_idx) = line.find("*/") {
-                let line = line[bc_idx..].trim();
+                let line = line[(bc_idx+2)..].trim();
                 in_block_comment = false;
                 let comment_idx = line.find("//").unwrap_or(line.len());
-                let mut line = line[0..comment_idx].trim();
+                let mut line = line[..comment_idx].trim();
                 if let Some(bc_idx) = line.find("/*") {
                     in_block_comment = true;
-                    line = line[0..bc_idx].trim();
+                    line = line[..bc_idx].trim();
                 }
                 if line.len() == 0 {
                     continue;
                 }
 
                 cleaned.push_str(line);
+                cleaned.push('\n');
             }
         } else {
             if !line.contains("/") {
                 cleaned.push_str(line);
+                cleaned.push('\n');
                 continue;
             }
             let comment_idx = line.find("//").unwrap_or(line.len());
-            let mut line = line[0..comment_idx].trim();
+            let mut line = line[..comment_idx].trim();
             if let Some(bc_idx) = line.find("/*") {
                 in_block_comment = true;
-                line = line[0..bc_idx].trim();
+                line = line[..bc_idx].trim();
             }
             if line.len() == 0 {
                 continue;
             }
 
             cleaned.push_str(line);
+            cleaned.push('\n');
         }
     }
 
@@ -380,9 +385,14 @@ const TOKEN_MAPPING: [Option<Token>; 128] = [
     None,
 ];
 
+const RESTRICTED_KWARGS: &[&str] = &["for", "while", "if"];
+
+
 pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     let mut fn_defs = vec![];
 
+    // This is in fact used, idk why it's telling me it's not
+    #[allow(unused)]
     let mut conditions = [
         false, // Starts with two objects
         false, // Has open paren
@@ -397,7 +407,7 @@ pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                 skip_to(tokens, Token::CloseParen, &mut i);
                 continue;
             } else if obj == "include" {
-                skip_to_oneof(tokens, &[Token::GreaterThan, Token::Literal("-")], &mut i);
+                skip_to_oneof(tokens, &[Token::GreaterThan, Token::Literal("\"")], &mut i);
                 continue;
             } else if obj == "define" {
                 skip_to(tokens, Token::NewLine, &mut i);
@@ -440,8 +450,12 @@ pub fn get_includes<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     let mut idx: usize = 0;
     while idx < tokens.len() {
         if let Token::HashTag = tokens[idx] {
+            if tokens[idx+1] != Token::Object("include") {
+                idx += 1;
+                continue;
+            }
             let mut end = idx;
-            skip_to_oneof(tokens, &[Token::GreaterThan, Token::Literal("-")], &mut end);
+            skip_to_oneof(tokens, &[Token::GreaterThan, Token::Literal("\"")], &mut end);
             includes.push(&tokens[idx..(end + 1)]);
             idx = end;
             continue;
@@ -559,5 +573,3 @@ fn skip_to_oneof(tokens: &[Token], targets: &[Token], idx: &mut usize) {
         }
     }
 }
-
-const RESTRICTED_KWARGS: [&str; 3] = ["for", "while", "if"];

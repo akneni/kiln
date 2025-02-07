@@ -38,6 +38,10 @@ pub enum Token<'a> {
 
 impl<'a> Token<'a> {
     pub fn tokens_to_string(tokens: &[Token]) -> String {
+        if tokens.len() >= 2 && (tokens[0] == Self::Object("struct") || tokens[1] == Self::Object("struct")) {
+            return Self::struct_tokens_to_string(tokens);
+        }
+
         let space_after = [Token::Comma, Token::Asterisk];
         let mut string = String::new();
 
@@ -69,7 +73,7 @@ impl<'a> Token<'a> {
         string
     }
 
-    pub fn struct_tokens_to_string(tokens: &[Token]) -> String {
+    fn struct_tokens_to_string(tokens: &[Token]) -> String {
         let mut string = String::new();
         let mut in_struct = false;
 
@@ -520,6 +524,35 @@ pub fn get_structs<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     structs
 }
 
+pub fn get_defines<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
+    let mut defines = vec![];
+
+    let mut idx: usize = 0;
+
+    while idx < tokens.len() {
+        if tokens[idx] != Token::HashTag {
+            skip_to(tokens, Token::HashTag, &mut idx);
+        }
+        
+        let start_idx = idx;
+
+        if idx + 1 >= tokens.len() || tokens[idx+1] != Token::Object("define") {
+            idx += 2;
+            continue;
+        }
+        idx += 1;
+
+        skip_to(tokens, Token::NewLine, &mut idx);
+        while idx < tokens.len() && tokens[idx-1] == Token::BackSlash {
+            skip_to(tokens, Token::NewLine, &mut idx);
+        }
+
+        defines.push(&tokens[start_idx..idx]);
+    }
+
+    defines
+}
+
 fn struct_len(tokens: &[Token]) -> Option<usize> {
     let mut num_brackets = 0;
     let mut contains_brackets = false;
@@ -552,13 +585,18 @@ fn struct_len(tokens: &[Token]) -> Option<usize> {
     None
 }
 
+/// Updates `idx` to point to the next token specified. If the 
+/// token does not exist, `idx` will be set equal to tokens.len()
 fn skip_to(tokens: &[Token], target: Token, idx: &mut usize) {
     for i in (*idx + 1)..tokens.len() {
         *idx = i;
         if tokens[i] == target {
-            break;
+            return;
         }
     }
+
+    // If the for loop ends, we haven't found it, so set idx appropriatly
+    *idx = tokens.len();
 }
 
 /// Ignores values inside the targets, it just skips to the next token
@@ -571,5 +609,49 @@ fn skip_to_oneof(tokens: &[Token], targets: &[Token], idx: &mut usize) {
                 return;
             }
         }
+    }
+}
+
+
+#[cfg(test)]
+mod lexer_tests {
+    use std::fs;
+
+    use super::*;
+
+    #[test]
+    fn test_get_defines() {
+        let s = fs::read_to_string("tests/lexer-define.c").unwrap();
+        let s = clean_source_code(s);
+        let tokens = tokenize(&s).unwrap();
+
+        let defines = get_defines(&tokens);
+
+        let mut log_dump = "".to_string();
+        for &def in &defines {
+            let x = format!("{:?}\n\n", def);
+            log_dump.push_str(&x);
+        }
+
+        fs::write("tests/lexer-define.log", format!("{}", log_dump)).unwrap();
+
+        assert_eq!(defines.len(), s.split("#define").collect::<Vec<&str>>().len() - 1);
+    }
+
+    #[test]
+    fn test_get_structs() {
+        let s = fs::read_to_string("tests/lexer-struct.c").unwrap();
+        let s = clean_source_code(s);
+        let tokens = tokenize(&s).unwrap();
+
+        let defines = get_structs(&tokens);
+
+        let mut log_dump = "".to_string();
+        for &def in &defines {
+            let x = format!("{:?}\n\n", def);
+            log_dump.push_str(&x);
+        }
+
+        fs::write("tests/lexer-struct.log", format!("{}", log_dump)).unwrap();
     }
 }

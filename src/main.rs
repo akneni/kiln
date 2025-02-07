@@ -20,6 +20,7 @@ use valgrind::VgOutput;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+
     let cli_args: cli::CliCommand;
     let raw_cli_args = std::env::args().collect::<Vec<String>>();
     if raw_cli_args.len() < 2 {
@@ -96,7 +97,7 @@ async fn main() {
                 process::exit(0);
             }
 
-            if let Err(err) = handle_headers(&config) {
+            if let Err(err) = handle_gen_headers(&config) {
                 println!("An error occured while generating header files:\n{}", err);
                 process::exit(1);
             }
@@ -331,7 +332,7 @@ fn handle_execution(
     Ok(())
 }
 
-fn handle_headers(config: &Config) -> Result<()> {
+fn handle_gen_headers(config: &Config) -> Result<()> {
     let cwd = env::current_dir()?;
     let src_dir = config.get_src_dir();
     let inc_dir = config.get_include_dir();
@@ -357,9 +358,16 @@ fn handle_headers(config: &Config) -> Result<()> {
             code_h = lexer::clean_source_code(code_h);
             let tokens_h = lexer::tokenize(&code_h)?;
 
+            let mut defines_h = lexer::get_defines(&tokens_h);
+            let mut sturcts_h = lexer::get_structs(&tokens_h);
+
             let fn_defs = lexer::get_fn_def(&tokens);
             let includes = lexer::get_includes(&tokens);
-            let structs = lexer::get_structs(&tokens_h);
+            let defines = lexer::get_defines(&tokens);
+            let structs = lexer::get_structs(&tokens);
+
+            defines_h.extend_from_slice(&defines[1..]); // Skip the first definition to skip the #ifndef NAME_H #define NAME_H 
+            sturcts_h.extend_from_slice(&structs);
 
             let mut headers = String::new();
 
@@ -372,8 +380,16 @@ fn handle_headers(config: &Config) -> Result<()> {
                 headers.push('\n');
             }
             headers.push('\n');
-            for &struc in &structs {
-                headers.push_str(&lexer::Token::struct_tokens_to_string(struc).trim());
+
+            for &def in &defines_h {
+                let s = lexer::Token::tokens_to_string(def);
+                headers.push_str(&s);
+                headers.push('\n');
+            }
+            headers.push('\n');
+
+            for &struc in &sturcts_h {
+                headers.push_str(&lexer::Token::tokens_to_string(struc).trim());
                 headers.push_str("\n\n");
             }
             for &func in &fn_defs {

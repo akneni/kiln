@@ -341,45 +341,48 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
     let src_dir = cwd.join(src_dir);
     let inc_dir = cwd.join(inc_dir);
 
-    for file in fs::read_dir(src_dir).unwrap() {
+    
+
+    for file in fs::read_dir(&src_dir).unwrap() {
         if let Ok(file) = file {
             let raw_name = file.file_name();
-            let raw_name = raw_name.to_str().unwrap().rsplit_once(".").unwrap().0;
-            if raw_name == "main" {
+            let (raw_name, file_ext) = raw_name.to_str().unwrap().rsplit_once(".").unwrap();
+            if raw_name == "main" || file_ext != "c" {
                 continue;
             }
             let header_name = format!("{}.h", raw_name);
 
-            let mut code = fs::read_to_string(file.path())?;
-            code = lexer::clean_source_code(code);
-            let tokens = lexer::tokenize(&code)?;
+            let code = fs::read_to_string(file.path())?;
+            let (tokens, byte_idx) = lexer::tokenize_unclean(&code)?;
 
-            let mut code_h =
+            let code_h =
                 fs::read_to_string(inc_dir.join(&header_name)).unwrap_or("".to_string());
-            code_h = lexer::clean_source_code(code_h);
-            let tokens_h = lexer::tokenize(&code_h)?;
+            let (tokens_h, _) = lexer::tokenize_unclean(&code_h)?;
 
             let mut defines_h = lexer::get_defines(&tokens_h);
-            let mut sturcts_h = lexer::get_structs(&tokens_h);
+            let mut udts_h = lexer::get_udts(&tokens_h);
 
             let fn_defs = lexer::get_fn_def(&tokens);
             let includes = lexer::get_includes(&tokens);
             let defines = lexer::get_defines(&tokens);
-            let structs = lexer::get_structs(&tokens);
+            let udts = lexer::get_udts(&tokens);
 
-            let res = headers_gen::merge_defines(&mut defines_h, &defines[1..]); // Skip the first definition to skip the #ifndef NAME_H #define NAME_H 
+            // Skip the first definition to skip the #ifndef NAME_H #define NAME_H 
+            if defines_h.len() > 0 {
+                defines_h.remove(0);
+            }
+
+            let res = headers_gen::merge_defines(&mut defines_h, &defines);
             if let Err(e) = res {
                 eprintln!("Error: {}", e);
                 process::exit(1);
             }
             
-            let res = headers_gen::merge_structs(&mut sturcts_h, &structs);
+            let res = headers_gen::merge_udts(&mut udts_h, &udts);
             if let Err(e) = res {
                 eprintln!("Error: {}", e);
                 process::exit(1);
             }
-
-            sturcts_h.extend_from_slice(&structs);
 
             let mut headers = String::new();
 
@@ -400,10 +403,12 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             }
             headers.push('\n');
 
-            for &struc in &sturcts_h {
+            for &struc in &udts_h {
                 headers.push_str(&lexer::Token::tokens_to_string(struc).trim());
                 headers.push_str("\n\n");
             }
+            headers.push('\n');
+
             for &func in &fn_defs {
                 let s = lexer::Token::tokens_to_string(func);
                 headers.push_str(&s);
@@ -412,7 +417,30 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             headers.push('\n');
             headers.push_str(&format!("#endif // {}_H", raw_name.to_uppercase()));
 
-            fs::write(inc_dir.join(header_name), headers)?;
+            fs::write(inc_dir.join(&header_name), headers)?;
+
+            // Remove definitions from original C file to avoid duplicates
+            let mut new_code = "".to_string();
+
+            let mut exlude_tokens = udts;
+            exlude_tokens.extend_from_slice(&defines);
+
+            let inclusion_ranges = lexer::get_inclusion_ranges(&tokens, &byte_idx, &exlude_tokens);
+
+
+            for range in &inclusion_ranges {
+                new_code.push_str(&code[range[0]..range[1]]);
+            }
+
+            let header_inc_path = format!("\"../include/{}\"", &header_name);
+
+            new_code = headers_gen::insert_self_include(new_code, &header_inc_path);
+
+            // let new_file = format!("{}.c.tmp", raw_name);
+            let new_file = format!("{}.c", raw_name);
+            let new_filepath = src_dir.join(&new_file);
+
+            fs::write(new_filepath, new_code).unwrap();
         }
     }
     Ok(())

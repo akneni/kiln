@@ -70,3 +70,75 @@ typedef struct Car {
     int wheels;
     float engine_power;
 } Vehicle;
+
+// Test case 12: Simple enum definition with a tag
+enum Color {
+    RED,
+    GREEN,
+    BLUE
+};
+
+// Test case 13: Typedef enum without a tag
+typedef enum {
+    CIRCLE,
+    SQUARE,
+    TRIANGLE
+} Shape;
+
+// Test case 14: Enum with explicit values
+enum Direction {
+    NORTH = 0,
+    EAST = 90,
+    SOUTH = 180,
+    WEST = 270
+};
+
+// Test case 15: Typedef enum with a tag
+typedef enum Day {
+    MONDAY,
+    TUESDAY,
+    WEDNESDAY,
+    THURSDAY,
+    FRIDAY,
+    SATURDAY,
+    SUNDAY
+} Day;
+
+// Test case 16: Simple union definition with a tag
+union Data {
+    int i;
+    float f;
+    char *s;
+};
+
+// Test case 17: Typedef union without a tag
+typedef union {
+    int i;
+    float f;
+    char *s;
+} Data;
+
+// Test case 18: Union with a nested struct
+union Mixed {
+    struct {
+        int a;
+        int b;
+    } pair;
+    float f;
+};
+
+// Test case 19: Anonymous union within a struct (C11 or as a compiler extension)
+struct Container {
+    int id;
+    union {
+        int i;
+        float f;
+    };  // Note: This union is anonymous and its members become members of Container.
+};
+
+// Test Case 20: Random bullshit that doesn't work for some reason
+typedef enum BlockType {
+	BlockTypeCreate,
+	BlockTypeUpdate,
+	BlockTypeDelete,
+} BlockType;

@@ -74,58 +74,89 @@ impl<'a> Token<'a> {
     }
 
     fn struct_tokens_to_string(tokens: &[Token]) -> String {
-        let mut string = String::new();
-        let mut in_struct = false;
-
+        let mut output = String::new();
+        let mut indent_level = 0;
+        let mut start_of_line = true;
+    
         for (i, token) in tokens.iter().enumerate() {
+            // At the beginning of a new line, insert indentation based on the current indent_level.
+            if start_of_line {
+                output.push_str(&"    ".repeat(indent_level));
+                start_of_line = false;
+            }
+    
             match token {
                 Token::Object(s) => {
-                    if i > 0 {
-                        let needs_space = matches!(
-                            tokens[i - 1],
+                    if i > 0 && !output.ends_with('\n') {
+                        // Add a space if the previous token is one of these.
+                        match tokens[i - 1] {
                             Token::Object(_)
-                                | Token::Literal(_)
-                                | Token::CloseCurlyBrace
-                                | Token::Asterisk
-                        );
-                        if needs_space {
-                            string.push(' ');
-                        } else if matches!(tokens[i - 1], Token::Semicolon | Token::OpenCurlyBrace)
-                        {
-                            string.push('\t');
+                            | Token::Literal(_)
+                            | Token::CloseCurlyBrace
+                            | Token::Asterisk => {
+                                output.push(' ');
+                            }
+                            _ => {}
                         }
                     }
-                    string.push_str(s);
+                    output.push_str(s);
+                }
+                Token::Literal(s) => {
+                    output.push_str(s);
                 }
                 Token::OpenCurlyBrace => {
-                    in_struct = true;
-                    string.push_str(" {\n");
+                    // Keep the '{' on the same line as the header.
+                    output.push_str(" {");
+                    output.push('\n');
+                    indent_level += 1; // Increase indent level for the struct body.
+                    start_of_line = true;
                 }
                 Token::CloseCurlyBrace => {
-                    in_struct = false;
-                    string.push_str("}");
+                    // Ensure the '}' starts on a new line.
+                    if !output.ends_with('\n') {
+                        output.push('\n');
+                    }
+                    indent_level = indent_level.saturating_sub(1); // Decrease indent level.
+                    output.push_str(&"    ".repeat(indent_level));
+                    output.push('}');
                 }
                 Token::Semicolon => {
-                    if in_struct {
-                        string.push_str(";\n");
-                    } else {
-                        string.push_str(";\n\n");
+                    output.push(';');
+                    if !output.ends_with('\n') {
+                        output.push('\n');
                     }
+                    start_of_line = true;
+                }
+                Token::NewLine => {
+                    if !output.ends_with('\n') {
+                        output.push('\n');
+                    }
+                    start_of_line = true;
                 }
                 _ => {
-                    for i in 0..TOKEN_MAPPING.len() {
-                        if let Some(c) = TOKEN_MAPPING[i] {
+                    // For any other token, convert it via TOKEN_MAPPING.
+                    for j in 0..TOKEN_MAPPING.len() {
+                        if let Some(c) = TOKEN_MAPPING[j] {
                             if c == *token {
-                                string.push((i as u8) as char);
+                                output.push((j as u8) as char);
                             }
                         }
                     }
                 }
             }
         }
-
-        string
-    }
+    
+        // Post-process the output to remove any blank lines (lines that contain only whitespace).
+        let cleaned = output
+            .split("\n")
+            .filter(|line| !line.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+            
+        cleaned
+    }    
+    
+    
 }
 
 pub fn clean_source_code(code: String) -> String {
@@ -746,6 +777,30 @@ mod lexer_tests {
         }
         
         fs::write("tests/lexer.test_get_struct_name.log", format!("{:#?}", names))
+            .unwrap();
+    }
+
+    #[test]
+    fn test_struct_tokens_to_string() {
+        let s = fs::read_to_string("tests/lexer-struct.c").unwrap();
+        let s = clean_source_code(s);
+        let tokens = tokenize(&s).unwrap();
+
+        let structs = get_structs(&tokens);
+
+        let mut log_dump = "".to_string();
+        for &d in &structs {
+            let s = Token::struct_tokens_to_string(d);
+            let s_exact = format!("{:?}", &s);
+            log_dump.push_str(&s);
+            log_dump.push_str("\n");
+            log_dump.push_str("___________\n");
+            log_dump.push_str(&s_exact);
+            log_dump.push_str("\n\n\n");
+        }
+    
+
+        fs::write("tests/lexer.test_struct_tokens_to_string.log", &log_dump)
             .unwrap();
     }
 

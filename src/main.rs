@@ -4,6 +4,7 @@ mod config;
 mod constants;
 mod kiln_package;
 mod lexer;
+mod headers_gen;
 mod package_manager;
 mod safety;
 mod utils;
@@ -366,7 +367,18 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             let defines = lexer::get_defines(&tokens);
             let structs = lexer::get_structs(&tokens);
 
-            defines_h.extend_from_slice(&defines[1..]); // Skip the first definition to skip the #ifndef NAME_H #define NAME_H 
+            let res = headers_gen::merge_defines(&mut defines_h, &defines[1..]); // Skip the first definition to skip the #ifndef NAME_H #define NAME_H 
+            if let Err(e) = res {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+            
+            let res = headers_gen::merge_structs(&mut sturcts_h, &structs);
+            if let Err(e) = res {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+
             sturcts_h.extend_from_slice(&structs);
 
             let mut headers = String::new();

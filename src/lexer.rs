@@ -553,6 +553,63 @@ pub fn get_defines<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     defines
 }
 
+/// Gets the name of the struct
+/// Ex) for `struct Point {...}`, this would return "Point"
+pub(super) fn get_struct_name<'a>(tokens: &'a [Token]) -> &'a str {
+    if tokens.len() < 3 {
+        unreachable!("Token string is not a valid struct definition");
+    }
+
+    match &tokens[0] {
+        // Handle typedef struct definitions
+        Token::Object("typedef") => {
+            // Ensure we are dealing with a typedef for a struct.
+            // Typical patterns:
+            //   typedef struct { ... } Alias;
+            //   typedef struct Tag { ... } Alias;
+            //
+            // In both cases, the actual name (Alias) is the last Object token before the semicolon.
+            let semicolon_index = tokens
+                .iter()
+                .rposition(|t| *t == Token::Semicolon)
+                .expect("Missing semicolon in typedef struct definition");
+
+            // Iterate backwards from the token just before the semicolon to find the typedef alias.
+            for token in tokens[..semicolon_index].iter().rev() {
+                if let Token::Object(name) = token {
+                    return name;
+                }
+            }
+            unreachable!("No valid struct name found in typedef struct definition");
+        }
+        // Handle regular struct definitions
+        Token::Object("struct") => {
+            // Expect the struct name to immediately follow the "struct" keyword.
+            if let Token::Object(name) = tokens[1] {
+                return name;
+            } else {
+                unreachable!("Expected struct name after 'struct' keyword");
+            }
+        }
+        _ => unreachable!("Token string is not a valid struct definition"),
+    }
+}
+
+
+
+/// Gets the name of the define statement
+/// Ex) for `#define FOO 42`, this would return "FOO"
+pub(super) fn get_define_name<'a>(tokens: &'a[Token]) -> &'a str  {
+    if tokens.len() < 3 || tokens[0] != Token::HashTag || tokens[1] != Token::Object("define") {
+        unreachable!("Token string is not a valid define macro");
+    }
+
+    if let Token::Object(s) = tokens[2] {
+        return s;
+    }
+    unreachable!("Token string is not a valid define macro");
+}
+
 fn struct_len(tokens: &[Token]) -> Option<usize> {
     let mut num_brackets = 0;
     let mut contains_brackets = false;
@@ -633,7 +690,7 @@ mod lexer_tests {
             log_dump.push_str(&x);
         }
 
-        fs::write("tests/lexer-define.log", format!("{}", log_dump)).unwrap();
+        fs::write("tests/lexer.test_get_defines.log", format!("{}", log_dump)).unwrap();
 
         assert_eq!(defines.len(), s.split("#define").collect::<Vec<&str>>().len() - 1);
     }
@@ -652,6 +709,44 @@ mod lexer_tests {
             log_dump.push_str(&x);
         }
 
-        fs::write("tests/lexer-struct.log", format!("{}", log_dump)).unwrap();
+        fs::write("tests/lexer.test_get_structs.log", format!("{}", log_dump)).unwrap();
     }
+
+    #[test]
+    fn test_get_define_name() {
+        let s = fs::read_to_string("tests/lexer-define.c").unwrap();
+        let s = clean_source_code(s);
+        let tokens = tokenize(&s).unwrap();
+
+        let defines = get_defines(&tokens);
+
+        let mut names = vec![];
+        for &d in &defines {
+            names.push(get_define_name(d));
+        }
+        
+        assert_eq!(defines.len(), s.split("#define").collect::<Vec<&str>>().len() - 1);
+
+        fs::write("tests/lexer.test_get_define_name.log", format!("{:#?}", names))
+            .unwrap();
+    }
+
+
+    #[test]
+    fn test_get_struct_name() {
+        let s = fs::read_to_string("tests/lexer-struct.c").unwrap();
+        let s = clean_source_code(s);
+        let tokens = tokenize(&s).unwrap();
+
+        let structs = get_structs(&tokens);
+
+        let mut names = vec![];
+        for &d in &structs {
+            names.push(get_struct_name(d));
+        }
+        
+        fs::write("tests/lexer.test_get_struct_name.log", format!("{:#?}", names))
+            .unwrap();
+    }
+
 }

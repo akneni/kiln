@@ -409,6 +409,27 @@ pub(super) fn get_inclusion_ranges(
     inclusion_ranges
 }
 
+pub(super) fn merge_inclusion_ranges(code: &str, inclusion_ranges: &Vec<[usize; 2]>) -> String {
+    let mut new_code = "".to_string();
+    if inclusion_ranges.len() == 0 {
+        return new_code;
+    }
+
+    for range in inclusion_ranges[..inclusion_ranges.len()-1].iter() {
+        new_code.push_str(&code[range[0]..range[1]]);
+    }
+
+    if let Some(&r) = inclusion_ranges.last() {
+        let mut r = r;
+        if r[1] == code.len() - 1 {
+            r[1] += 1;
+        }
+        new_code.push_str(&code[r[0]..r[1]]);
+    }
+
+    new_code
+}
+
 // Maps character's ascii codes to their token
 const TOKEN_MAPPING: [Option<Token>; 128] = [
     None,

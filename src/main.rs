@@ -420,17 +420,11 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             fs::write(inc_dir.join(&header_name), headers)?;
 
             // Remove definitions from original C file to avoid duplicates
-            let mut new_code = "".to_string();
-
             let mut exlude_tokens = udts;
             exlude_tokens.extend_from_slice(&defines);
 
             let inclusion_ranges = lexer::get_inclusion_ranges(&tokens, &byte_idx, &exlude_tokens);
-
-
-            for range in &inclusion_ranges {
-                new_code.push_str(&code[range[0]..range[1]]);
-            }
+            let mut new_code = lexer::merge_inclusion_ranges(&code, &inclusion_ranges);
 
             let header_inc_path = format!("\"../include/{}\"", &header_name);
 

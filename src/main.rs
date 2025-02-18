@@ -9,6 +9,9 @@ mod package_manager;
 mod safety;
 mod utils;
 mod valgrind;
+mod dev_env_config;
+mod kiln_errors;
+mod editors;
 
 use anyhow::{anyhow, Result};
 use clap::Parser;

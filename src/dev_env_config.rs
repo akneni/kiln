@@ -1,10 +1,11 @@
 use std::{fs, path::Path};
 
 use serde::{Deserialize, Serialize};
+use strum_macros::EnumIter;
 
 use crate::kiln_errors::KilnResult;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, EnumIter)]
 pub(super) enum EditorType {
     VsCode,
     NeoVim,

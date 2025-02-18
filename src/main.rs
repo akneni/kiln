@@ -16,9 +16,10 @@ mod editors;
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use config::Config;
-use constants::{CONFIG_FILE, PACKAGE_DIR, SEPETATOR};
+use constants::{CONFIG_FILE, DEV_ENV_CFG_FILE, PACKAGE_DIR, SEPETATOR};
 use package_manager::PkgError;
-use std::{env, fs, path::Path, process, time};
+use strum::IntoEnumIterator;
+use std::{env, fs, io::Write, path::Path, process, time};
 use utils::Language;
 use valgrind::VgOutput;
 
@@ -219,6 +220,63 @@ async fn main() {
                 if let Err(e) = err {
                     eprintln!("Code build sucessfully, but failed to execute:\n{}", e);
                     process::exit(1);
+                }
+            }
+        }
+        cli::Commands::LocalDev { subcommand } => {
+            match subcommand {
+                cli::LocalDevSubCmd::SetEditor => {
+                    if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
+                        println!("{}", e);
+                        process::exit(1);
+                    }
+                    let config = config.unwrap();
+
+                    let cwd = env::current_dir().unwrap();
+                    let editor_types: Vec<dev_env_config::EditorType> = dev_env_config::EditorType::iter().collect();
+
+                    for (i, e) in editor_types.iter().enumerate() {
+                        println!("{}) {:?}", i, e);
+                    }
+                    println!("------------------");
+                    println!("Choose an editor: ");
+                    std::io::stdout().flush().unwrap();
+
+                    let mut s_in = "".to_string();
+                    std::io::stdin().read_line(&mut s_in).unwrap();
+
+                    if let Ok(editor_num) = s_in.parse::<usize>() {
+                        if editor_num >= editor_types.len() {
+                            eprintln!("Index `{}` doesn't match any editor", s_in);
+                            process::exit(0);
+                        }
+                        
+                        let local_config = dev_env_config::DevEnvConfig {
+                            editor: Some(editor_types[editor_num]),
+                        };
+
+                        let local_config_str = toml::to_string(&local_config).unwrap();
+                        
+                        let dev_env_f = cwd.join(DEV_ENV_CFG_FILE);
+
+                        fs::write(&dev_env_f, &local_config_str).unwrap();
+                    } else {
+                        eprintln!("Error parsing `{}`", s_in);
+                        process::exit(0);
+                    }
+
+                    editors::handle_editor_includes(&config, &cwd).unwrap();
+
+                }
+                cli::LocalDevSubCmd::UpdateEditorInc => {
+                    if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
+                        println!("{}", e);
+                        process::exit(1);
+                    }
+                    let config = config.unwrap();
+                    let cwd = env::current_dir().unwrap();
+
+                    editors::handle_editor_includes(&config, cwd).unwrap();
                 }
             }
         }

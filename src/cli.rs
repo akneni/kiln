@@ -39,6 +39,11 @@ pub enum Commands {
         args: Vec<String>,
         valgrind: bool,
     },
+
+    LocalDev {
+        #[command(subcommand)]
+        subcommand: LocalDevSubCmd
+    },
 }
 
 impl Commands {
@@ -55,6 +60,12 @@ impl Commands {
             _ => panic!("Parameter `variant` must be one of 'build' or 'run'"),
         }
     }
+}
+
+#[derive(Subcommand, Debug)]
+pub enum LocalDevSubCmd {
+    SetEditor,
+    UpdateEditorInc
 }
 
 #[allow(unused)]

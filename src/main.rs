@@ -245,7 +245,7 @@ async fn main() {
                     let mut s_in = "".to_string();
                     std::io::stdin().read_line(&mut s_in).unwrap();
 
-                    if let Ok(editor_num) = s_in.parse::<usize>() {
+                    if let Ok(editor_num) = s_in.trim().parse::<usize>() {
                         if editor_num >= editor_types.len() {
                             eprintln!("Index `{}` doesn't match any editor", s_in);
                             process::exit(0);
@@ -266,7 +266,6 @@ async fn main() {
                     }
 
                     editors::handle_editor_includes(&config, &cwd).unwrap();
-
                 }
                 cli::LocalDevSubCmd::UpdateEditorInc => {
                     if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {

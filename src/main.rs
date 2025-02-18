@@ -22,9 +22,9 @@ use std::{env, fs, path::Path, process, time};
 use utils::Language;
 use valgrind::VgOutput;
 
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-
     let cli_args: cli::CliCommand;
     let raw_cli_args = std::env::args().collect::<Vec<String>>();
     if raw_cli_args.len() < 2 {
@@ -135,6 +135,9 @@ async fn main() {
             }
 
             config.to_disk(Path::new(constants::CONFIG_FILE));
+
+            let cwd = env::current_dir().unwrap();
+            editors::handle_editor_includes(&config, &cwd).unwrap();
         }
         cli::Commands::PurgeGlobalInstalls => {
             let pkg_dir = (*PACKAGE_DIR).clone();

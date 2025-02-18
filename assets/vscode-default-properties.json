@@ -2,9 +2,7 @@
     "configurations": [
         {
             "name": "Default",
-            "includePath": [
-                "${workspaceFolder}/include/**"
-            ]
+            "includePath": []
         }
     ],
     "version": 4

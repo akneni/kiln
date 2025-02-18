@@ -3,6 +3,7 @@
 pub(super) enum KilnErrType {
     FileNotFound,
     TomlParseError,
+    Anyhow,
     Unkown,
 }
 
@@ -42,3 +43,11 @@ impl From<toml::de::Error> for KilnError {
     }
 }
 
+impl From<anyhow::Error> for KilnError {
+    fn from(error: anyhow::Error) -> Self {
+        KilnError {
+            err_type: KilnErrType::Anyhow,
+            msg: format!("{:?}", error),
+        }
+    }
+}

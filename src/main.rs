@@ -43,7 +43,7 @@ async fn main() {
             profile = raw_cli_args[2].clone();
         }
         if let Some(idx) = raw_cli_args.iter().position(|i| i == "--") {
-            // Extracts passthough CLI arguments (kiln run)
+            // Extracts passthrough CLI arguments (kiln run)
             assert!([2_usize, 3_usize].contains(&idx));
             args = raw_cli_args[(idx + 1)..].to_vec();
         } else {
@@ -364,7 +364,7 @@ fn handle_execution(
     profile: &str,
     config: &Config,
     project_dir: &Path,
-    passthough_args: &[String],
+    passthrough_args: &[String],
 ) -> Result<()> {
     if !profile.starts_with("--") {
         return Err(anyhow!("Error: profile must start with `--`"));
@@ -380,7 +380,7 @@ fn handle_execution(
     }
 
     let output = process::Command::new(&bin_path)
-        .args(passthough_args)
+        .args(passthrough_args)
         .stdin(process::Stdio::inherit())
         .stdout(process::Stdio::inherit())
         .stderr(process::Stdio::inherit())

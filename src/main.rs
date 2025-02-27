@@ -16,13 +16,12 @@ mod editors;
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use config::Config;
-use constants::{CONFIG_FILE, DEV_ENV_CFG_FILE, PACKAGE_DIR, SEPETATOR};
+use constants::{CONFIG_FILE, DEV_ENV_CFG_FILE, PACKAGE_DIR, SEPARATOR};
 use package_manager::PkgError;
 use strum::IntoEnumIterator;
 use std::{env, fs, io::Write, path::Path, process, time};
 use utils::Language;
 use valgrind::VgOutput;
-
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -97,13 +96,13 @@ async fn main() {
             }
             let config = config.unwrap();
             if config.project.language != "c" {
-                println!("Unfortunately, generating header files is only avilalbe for C.");
+                println!("Unfortunately, generating header files is only available for C.");
                 println!("Stay tuned!! C++/CUDA support coming soon!");
                 process::exit(0);
             }
 
             if let Err(err) = handle_gen_headers(&config) {
-                println!("An error occured while generating header files:\n{}", err);
+                println!("An error occurred while generating header files:\n{}", err);
                 process::exit(1);
             }
         }
@@ -125,11 +124,11 @@ async fn main() {
                             dbg!(e);
                             eprintln!("Request timed out, please check internet connection");
                         } else {
-                            eprintln!("An unknown error occured:\n{}", err);
+                            eprintln!("An unknown error occurred:\n{}", err);
                         }
                     }
                     _ => {
-                        eprintln!("An unknown error occured:\n{}", err);
+                        eprintln!("An unknown error occurred:\n{}", err);
                     }
                 }
                 std::process::exit(1);
@@ -155,11 +154,11 @@ async fn main() {
             handle_check_installs(&config).await;
 
             if let Err(e) = handle_warnings(&config) {
-                eprintln!("An error occured during static analysis:\n{}", e);
+                eprintln!("An error occurred during static analysis:\n{}", e);
                 process::exit(1);
             }
             if let Err(e) = handle_build(&profile, &config) {
-                eprintln!("An error occured while building the project:\n{}", e);
+                eprintln!("An error occurred while building the project:\n{}", e);
                 process::exit(1);
             }
         }
@@ -176,11 +175,11 @@ async fn main() {
             handle_check_installs(&config).await;
 
             if let Err(e) = handle_warnings(&config) {
-                eprintln!("An error occured during static analysis:\n{}", e);
+                eprintln!("An error occurred during static analysis:\n{}", e);
                 process::exit(1);
             }
             if let Err(e) = handle_build(&profile, &config) {
-                eprintln!("An error occured while building the project:\n{}", e);
+                eprintln!("An error occurred while building the project:\n{}", e);
                 process::exit(1);
             }
 
@@ -211,14 +210,14 @@ async fn main() {
                 };
 
                 if valgrind_out.errors.len() > 0 {
-                    println!("{}\n", *SEPETATOR);
+                    println!("{}\n", *SEPARATOR);
                     safety::print_vg_errors(&valgrind_out);
                 }
             } else {
                 // If use_valgrind = false
                 let err = handle_execution(&profile, &config, &cwd, &args);
                 if let Err(e) = err {
-                    eprintln!("Code build sucessfully, but failed to execute:\n{}", e);
+                    eprintln!("Code build successfully, but failed to execute:\n{}", e);
                     process::exit(1);
                 }
             }
@@ -300,7 +299,7 @@ fn handle_warnings(config: &Config) -> Result<Vec<safety::Warning>> {
         );
     }
     if warnings.len() > 0 {
-        println!("{}", *SEPETATOR);
+        println!("{}", *SEPARATOR);
     }
 
     Ok(warnings)
@@ -430,6 +429,9 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             let defines = lexer::get_defines(&tokens);
             let udts = lexer::get_udts(&tokens);
 
+            // Ensure headerfiles don't include themselves
+            let includes = headers_gen::filter_out_includes(&includes, raw_name);
+
             // Skip the first definition to skip the #ifndef NAME_H #define NAME_H 
             if defines_h.len() > 0 {
                 defines_h.remove(0);
@@ -483,10 +485,10 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             fs::write(inc_dir.join(&header_name), headers)?;
 
             // Remove definitions from original C file to avoid duplicates
-            let mut exlude_tokens = udts;
-            exlude_tokens.extend_from_slice(&defines);
+            let mut exclude_tokens = udts;
+            exclude_tokens.extend_from_slice(&defines);
 
-            let inclusion_ranges = lexer::get_inclusion_ranges(&tokens, &byte_idx, &exlude_tokens);
+            let inclusion_ranges = lexer::get_inclusion_ranges(&tokens, &byte_idx, &exclude_tokens);
             let mut new_code = lexer::merge_inclusion_ranges(&code, &inclusion_ranges);
 
             let header_inc_path = format!("\"../include/{}\"", &header_name);

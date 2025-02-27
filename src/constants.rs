@@ -50,7 +50,7 @@ pub static PACKAGE_DIR: Lazy<PathBuf> = Lazy::new(|| {
     data_dir.join("packages")
 });
 
-pub static SEPETATOR: Lazy<ColoredString> = Lazy::new(|| {
+pub static SEPARATOR: Lazy<ColoredString> = Lazy::new(|| {
     "✦ ═════════════════════════════════ ⚔ ═════════════════════════════════ ✦"
         .to_string()
         .blue()

@@ -174,7 +174,7 @@ impl<'a> Token<'a> {
 }
 
 pub fn clean_source_code(code: String) -> String {
-    // TDOD: skip over any `//` of `/*` that are in string literals
+    // TODO: skip over any `//` of `/*` that are in string literals
     let mut cleaned = String::with_capacity(code.len());
 
     let mut in_block_comment = false; // whether we're inside /* ... */
@@ -240,7 +240,7 @@ pub fn tokenize(code: &str) -> Result<Vec<Token>> {
             continue;
         }
         if code_bytes[idx] == '"' as u8 {
-            let len = find_len_stringliteral(&code_bytes[idx..])?;
+            let len = find_len_string_literal(&code_bytes[idx..])?;
             let val = &code[idx..(idx + len)];
             let tok = Token::Literal(val);
             tokens.push(tok);
@@ -283,7 +283,7 @@ pub fn tokenize_unclean(code: &str) -> Result<(Vec<Token>, Vec<usize>)> {
             continue;
         }
         if code_bytes[idx] == '"' as u8 {
-            let len = find_len_stringliteral(&code_bytes[idx..])?;
+            let len = find_len_string_literal(&code_bytes[idx..])?;
             let val = &code[idx..(idx + len)];
             let tok = Token::Literal(val);
             tokens.push(tok);
@@ -329,7 +329,7 @@ fn find_len_object(code_bytes: &[u8], mut curr_idx: usize) -> usize {
     return curr_idx;
 }
 
-fn find_len_stringliteral(code_bytes: &[u8]) -> Result<usize> {
+fn find_len_string_literal(code_bytes: &[u8]) -> Result<usize> {
     let mut idx: usize = 1;
     while idx < code_bytes.len() {
         if code_bytes[idx] == '\n' as u8 {
@@ -343,11 +343,11 @@ fn find_len_stringliteral(code_bytes: &[u8]) -> Result<usize> {
         }
         idx += 1;
     }
-    Err(anyhow!("String listeral not closed"))
+    Err(anyhow!("String literal not closed"))
 }
 
 /// Gets the ranges (as [start, end] byte offsets) from the `byte_idx` vector to keep,
-/// excluding the token slices in `exlucde_tokens`.
+/// excluding the token slices in `exclude_tokens`.
 /// 
 /// Both `tokens` and `byte_idx` are assumed to be parallel; i.e. the ith element of `byte_idx`
 /// gives the starting offset of the ith token in `tokens`. In an ideal setup, `byte_idx` would have
@@ -355,7 +355,7 @@ fn find_len_stringliteral(code_bytes: &[u8]) -> Result<usize> {
 pub(super) fn get_inclusion_ranges(
     tokens: &Vec<Token>,
     byte_idx: &Vec<usize>,
-    exlucde_tokens: &[&[Token]]
+    exclude_tokens: &[&[Token]]
 ) -> Vec<[usize; 2]> {
     let mut inclusion_ranges = Vec::new();
     // current_inclusion_start marks the index (in tokens) where the current “keep” region began.
@@ -365,7 +365,7 @@ pub(super) fn get_inclusion_ranges(
     while i < tokens.len() {
         let mut matched_exclusion = None;
         // See if any of the exclusion slices match starting at token index i.
-        for &excl in exlucde_tokens {
+        for &excl in exclude_tokens {
             if excl.is_empty() {
                 continue;
             }
@@ -830,12 +830,12 @@ fn skip_to(tokens: &[Token], target: Token, idx: &mut usize) {
         }
     }
 
-    // If the for loop ends, we haven't found it, so set idx appropriatly
+    // If the for loop ends, we haven't found it, so set idx appropriately
     *idx = tokens.len();
 }
 
 /// Ignores values inside the targets, it just skips to the next token
-/// that's one of the target varients
+/// that's one of the target variants
 fn skip_to_oneof(tokens: &[Token], targets: &[Token], idx: &mut usize) {
     for i in (*idx + 1)..tokens.len() {
         *idx = i;

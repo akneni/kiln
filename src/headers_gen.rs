@@ -82,3 +82,27 @@ pub(super) fn insert_self_include(code: String, include: &str) -> String {
     
     code_lines.join("\n")
 }
+
+
+/// Filters out `#include "XXX.h"` where `file_name` is `"XXX"`
+pub(super) fn filter_out_includes<'a>(includes: &Vec<&'a [lexer::Token]>, file_name: &str) -> Vec<&'a [lexer::Token<'a>]> {
+    let include_str_name = [
+        format!("{}.h\"", file_name),
+        format!("/{}.h\"", file_name),
+        format!("\\{}.h\"", file_name),
+    ];
+    
+    includes.clone().into_iter()
+        .filter(|&x| {
+            if let Some(lexer::Token::Literal(s)) = x.last() {
+                if s == &include_str_name[0] {
+                    return false;
+                } else if include_str_name[1..].iter().any(|inc_name| s.ends_with(inc_name)) {
+                    return false;
+                }
+            }
+
+            true
+        })
+        .collect()
+}

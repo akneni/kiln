@@ -10,7 +10,7 @@ use crate::kiln_package::KilnPackageConfig;
 pub struct Config {
     pub project: Project,
     pub build_options: BuildOptions,
-    pub dependnecy: Option<Vec<Dependnecy>>,
+    pub dependency: Option<Vec<Dependency>>,
 }
 
 impl Config {
@@ -27,7 +27,7 @@ impl Config {
         Config {
             project,
             build_options,
-            dependnecy: None,
+            dependency: None,
         }
     }
 
@@ -152,7 +152,7 @@ impl BuildOptions {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub(super) struct Dependnecy {
+pub(super) struct Dependency {
     pub uri: String,
     pub version: String,
     pub include_dir: Option<String>,
@@ -161,12 +161,12 @@ pub(super) struct Dependnecy {
     pub static_lib_dir: Option<String>,
 }
 
-impl Dependnecy {
+impl Dependency {
     pub(super) fn new(owner: &str, repo_name: &str, version: &str) -> Self {
-        Dependnecy {
+        Dependency {
             uri: format!("https://github.com/{}/{}.git", owner, repo_name),
             version: version.to_string(),
-            ..Dependnecy::default()
+            ..Dependency::default()
         }
     }
 
@@ -268,9 +268,9 @@ impl Dependnecy {
     }
 
 
-    /// Adds a depdendnecy if it doesn't already exist
+    /// Adds a dependency if it doesn't already exist
     /// Returns true if the dependency already exists
-    pub(super) fn add_dependency(deps: &mut Vec<Dependnecy>, new_dep: Dependnecy) -> bool {
+    pub(super) fn add_dependency(deps: &mut Vec<Dependency>, new_dep: Dependency) -> bool {
         for dep in deps.iter() {
             if *dep == new_dep {
                 return true;
@@ -291,11 +291,9 @@ impl Dependnecy {
 
 }
 
-
-
 /// Computes weak equality. Evaluates to true if the github uri has the same
 /// project name and owner
-impl PartialEq for Dependnecy {
+impl PartialEq for Dependency {
     fn eq(&self, other: &Self) -> bool {
         self.owner() == other.owner() &&
         self.repo_name() == other.repo_name()

@@ -1,6 +1,6 @@
-use crate::config::{self, Dependnecy, Config};
+use crate::config::{self, Dependency, Config};
 use crate::constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE};
-use crate::kiln_package::{self, KilnPackageConfig};
+use crate::kiln_package::KilnPackageConfig;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::io::Write;
@@ -152,7 +152,7 @@ async fn find_tags(owner: &str, repo_name: &str) -> Result<Vec<Tag>, PkgError> {
 
 /// Installs a package in the glocal cache. does NOT create a kiln-package.toml file
 /// If the package already exists locally, it does nothing
-async fn install_globally(package: &Dependnecy, tag: &Tag) -> Result<(), PkgError> {
+async fn install_globally(package: &Dependency, tag: &Tag) -> Result<(), PkgError> {
     let package_dir = package.get_global_path();
     let tarball_tmp_name = format!(
         "{}_{}_{}",
@@ -211,8 +211,8 @@ pub(super) async fn resolve_adding_package(
     version: Option<&str>,
 ) -> Result<(), PkgError> {
     // TODO: Add a better error message by providing the link to see all the github repo's tags
-    if let None = config.dependnecy {
-        config.dependnecy = Some(vec![]);
+    if let None = config.dependency {
+        config.dependency = Some(vec![]);
     }
 
     let mut packages_added: HashSet<String> = HashSet::new();
@@ -249,8 +249,8 @@ pub(super) async fn resolve_adding_package(
 
         for f in futures {
             let (chain_deps, cfg) = f.await??;
-            let kiln_dcf_deps = config.dependnecy.as_mut().unwrap();
-            config::Dependnecy::add_dependency(kiln_dcf_deps, cfg);
+            let kiln_dcf_deps = config.dependency.as_mut().unwrap();
+            config::Dependency::add_dependency(kiln_dcf_deps, cfg);
             deps.extend(chain_deps);
         }
     }
@@ -264,7 +264,7 @@ async fn add_package(
     owner: String,
     proj_name: String,
     version: Option<String>,
-) -> Result<(Vec<[String; 3]>, Dependnecy), PkgError> {
+) -> Result<(Vec<[String; 3]>, Dependency), PkgError> {
     // TODO: Add a better error message by providing the link to see all the github repo's tags
     let repo_name = format!("https://github.com/{}/{}", owner, proj_name);
 
@@ -294,7 +294,7 @@ async fn add_package(
         tag = tags.last().unwrap();
     }
 
-    let pkg = Dependnecy::new(&owner, &proj_name, &tag.name);
+    let pkg = Dependency::new(&owner, &proj_name, &tag.name);
 
     install_globally(&pkg, &tag).await?;
 
@@ -346,10 +346,10 @@ async fn add_package(
     let mut chain_dep_ids = vec![];
 
     if let Some(mut cfg) = pkg.get_kiln_cfg()? {
-        if let None = cfg.dependnecy {
-            cfg.dependnecy = Some(vec![]);
+        if let None = cfg.dependency {
+            cfg.dependency = Some(vec![]);
         }
-        let chain_deps = cfg.dependnecy.as_ref().unwrap();
+        let chain_deps = cfg.dependency.as_ref().unwrap();
         for chain_dep in chain_deps {
             let (chain_owner, chain_repo) = parse_github_uri(&chain_dep.uri)?;
 
@@ -372,7 +372,7 @@ pub(super) fn check_pkgs<'a>(config: &'a Config) -> Vec<[String; 3]> {
     let mut not_installed = vec![];
     let mut pkgs_visited: HashSet<String> = HashSet::new();
 
-    if let Some(deps) = &config.dependnecy {
+    if let Some(deps) = &config.dependency {
         for dep in deps {
             check_pkg_h(dep, &mut not_installed, &mut pkgs_visited);
         }
@@ -381,7 +381,7 @@ pub(super) fn check_pkgs<'a>(config: &'a Config) -> Vec<[String; 3]> {
     not_installed
 }
 
-fn check_pkg_h(dep: &Dependnecy, output: &mut Vec<[String; 3]>, pkgs_visited: &mut HashSet<String>) {
+fn check_pkg_h(dep: &Dependency, output: &mut Vec<[String; 3]>, pkgs_visited: &mut HashSet<String>) {
     if pkgs_visited.contains(dep.uri.as_str()) {
         return;
     }
@@ -401,7 +401,7 @@ fn check_pkg_h(dep: &Dependnecy, output: &mut Vec<[String; 3]>, pkgs_visited: &m
     }
 
     if let Some(kiln_cfg) = dep.get_kiln_cfg().unwrap() {
-        if let Some(chain_deps) = &kiln_cfg.dependnecy {
+        if let Some(chain_deps) = &kiln_cfg.dependency {
             for chain_dep in chain_deps {
                 check_pkg_h(chain_dep, output, pkgs_visited);
             }

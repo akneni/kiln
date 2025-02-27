@@ -1,7 +1,5 @@
 use anyhow::{anyhow, Result};
 
-const UDT_KWARGS: &[&str] = &["struct", "enum", "union"];
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Token<'a> {
     Object(&'a str),
@@ -171,57 +169,6 @@ impl<'a> Token<'a> {
     }    
     
     
-}
-
-pub fn clean_source_code(code: String) -> String {
-    // TODO: skip over any `//` of `/*` that are in string literals
-    let mut cleaned = String::with_capacity(code.len());
-
-    let mut in_block_comment = false; // whether we're inside /* ... */
-    for line in code.split("\n") {
-        let line = line.trim();
-        if line.len() == 0 {
-            continue;
-        }
-        if in_block_comment {
-            if let Some(bc_idx) = line.find("*/") {
-                let line = line[(bc_idx+2)..].trim();
-                in_block_comment = false;
-                let comment_idx = line.find("//").unwrap_or(line.len());
-                let mut line = line[..comment_idx].trim();
-                if let Some(bc_idx) = line.find("/*") {
-                    in_block_comment = true;
-                    line = line[..bc_idx].trim();
-                }
-                if line.len() == 0 {
-                    continue;
-                }
-
-                cleaned.push_str(line);
-                cleaned.push('\n');
-            }
-        } else {
-            if !line.contains("/") {
-                cleaned.push_str(line);
-                cleaned.push('\n');
-                continue;
-            }
-            let comment_idx = line.find("//").unwrap_or(line.len());
-            let mut line = line[..comment_idx].trim();
-            if let Some(bc_idx) = line.find("/*") {
-                in_block_comment = true;
-                line = line[..bc_idx].trim();
-            }
-            if line.len() == 0 {
-                continue;
-            }
-
-            cleaned.push_str(line);
-            cleaned.push('\n');
-        }
-    }
-
-    cleaned.trim().to_string()
 }
 
 pub fn tokenize(code: &str) -> Result<Vec<Token>> {

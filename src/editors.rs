@@ -24,7 +24,7 @@ pub(super) fn handle_editor_includes(config: &Config, proj_dir: impl AsRef<Path>
         "${workspaceFolder}/XXX/**".replace("XXX", config.get_include_dir().trim_matches('/'))
     ];
 
-    if let Some(deps) = config.dependnecy.as_ref() {
+    if let Some(deps) = config.dependency.as_ref() {
         for dep in deps {
             if let Some(s) = dep.get_include_dir()? {
                 let s = s.to_str().unwrap().to_string();

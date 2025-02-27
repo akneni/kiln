@@ -1,4 +1,4 @@
-use crate::config::Dependnecy;
+use crate::config::Dependency;
 use crate::utils;
 use crate::utils::Language;
 use crate::{config::Config, constants::CONFIG_FILE};
@@ -112,7 +112,7 @@ pub(super) fn link_dep_files(
     language: Language,
     out_buffer: &mut Vec<String>,
 ) -> Result<()> {
-    let deps = match &config.dependnecy {
+    let deps = match &config.dependency {
         Some(d) => d.clone(),
         None => return Ok((),)
     };
@@ -135,7 +135,7 @@ pub(super) fn link_dep_headers(config: &Config) -> Result<Vec<String>> {
 
     let mut packages: HashSet<String> = HashSet::new();
 
-    if let Some(deps) = &config.dependnecy {
+    if let Some(deps) = &config.dependency {
         for dep in deps {
             link_dep_headers_h(dep, &mut header_dirs, &mut packages)?;
         }
@@ -243,7 +243,7 @@ pub fn validate_proj_repo(path: &Path) -> Result<()> {
 
 /// Helper function that recursivly links all the source code files
 fn link_dep_files_h(
-    dep: &Dependnecy,
+    dep: &Dependency,
     language: Language,
     out_buffer: &mut Vec<String>,
     packages: &mut HashMap<String, String>,
@@ -312,7 +312,7 @@ fn link_dep_files_h(
 
     // Recursivley handle chain dependnecies
     if let Some(kiln_cfg) = dep.get_kiln_cfg()? {
-        if let Some(chain_deps) = kiln_cfg.dependnecy {
+        if let Some(chain_deps) = kiln_cfg.dependency {
             for cd in &chain_deps {
                 link_dep_files_h(cd, language, out_buffer, packages, filenames)?;
             }
@@ -324,7 +324,7 @@ fn link_dep_files_h(
 
 /// Helper function that recursivly links all the header file directories
 fn link_dep_headers_h(
-    dep: &Dependnecy,
+    dep: &Dependency,
     out_buffer: &mut Vec<String>,
     packages: &mut HashSet<String>,
 ) -> Result<()> {
@@ -357,7 +357,7 @@ fn link_dep_headers_h(
     
     // Recursivley handle chain dependnecies
     if let Some(kiln_cfg) = dep.get_kiln_cfg()? {
-        if let Some(chain_deps) = kiln_cfg.dependnecy {
+        if let Some(chain_deps) = kiln_cfg.dependency {
             for cd in &chain_deps {
                 link_dep_headers_h(cd, out_buffer, packages)?;
             }

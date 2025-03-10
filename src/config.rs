@@ -1,10 +1,16 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 use toml;
 
-use crate::{constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE, PACKAGE_DIR}, package_manager, utils};
 use crate::packaging::kiln_package::KilnPackageConfig;
+use crate::{
+    constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE, PACKAGE_DIR},
+    package_manager, utils,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -19,7 +25,7 @@ impl Config {
             name: proj_name.to_string(),
             version: "0.0.1".to_string(),
             language: "c".to_string(),
-            build_type: vec![BuildType::Exe]
+            build_type: vec![BuildType::Exe],
         };
 
         // No posibility of this failing
@@ -37,16 +43,16 @@ impl Config {
 
         let config: Config = toml::from_str(&toml_str)?;
 
-
         let build_types = &config.project.build_type;
 
         if build_types.len() == 0 {
             return Err(anyhow!("Project must have a build type"));
         }
         if build_types.contains(&BuildType::Exe) && build_types.len() > 1 {
-            return Err(anyhow!("Project cannot be executable in addition to other types"));
-        } 
-
+            return Err(anyhow!(
+                "Project cannot be executable in addition to other types"
+            ));
+        }
 
         Ok(config)
     }
@@ -204,10 +210,7 @@ impl Dependency {
     pub fn get_global_path(&self) -> PathBuf {
         let (owner, repo) = package_manager::parse_github_uri(&self.uri).unwrap();
 
-        (*PACKAGE_DIR)
-            .join(owner)
-            .join(repo)
-            .join(&self.version)
+        (*PACKAGE_DIR).join(owner).join(repo).join(&self.version)
     }
 
     pub fn get_kiln_cfg(&self) -> Result<Option<Config>> {
@@ -281,7 +284,6 @@ impl Dependency {
 /// project name and owner
 impl PartialEq for Dependency {
     fn eq(&self, other: &Self) -> bool {
-        self.owner() == other.owner() &&
-        self.repo_name() == other.repo_name()
+        self.owner() == other.owner() && self.repo_name() == other.repo_name()
     }
 }

@@ -115,12 +115,12 @@ pub fn link_dep_files(
 ) -> Result<()> {
     let deps = match &config.dependency {
         Some(d) => d.clone(),
-        None => return Ok((),)
+        None => return Ok(()),
     };
 
     // {key: uri, value: version}
     let mut packages: HashMap<String, String> = HashMap::new();
-    
+
     // {key: filename, value: uri file is from}
     let mut filenames: HashMap<String, String> = HashMap::new();
 
@@ -194,7 +194,7 @@ pub fn full_compilation_cmd(
 
     let profile = &profile[2..];
     let mut build_path = format!("{}/build/{}/{}", cwd, profile, &config.project.name);
-    
+
     match build_type {
         config::BuildType::DynamicLibrary => {
             let file_ext = match env::consts::OS {
@@ -210,9 +210,9 @@ pub fn full_compilation_cmd(
 
             command.extend_from_slice(&["-shared".to_string(), "-fPIC".to_string()]);
         }
-        config::BuildType::StaticLibrary => {   
+        config::BuildType::StaticLibrary => {
             command.push("-c".to_string());
-            
+
             let _ = fs::create_dir_all(&build_path);
         }
         _ => {}
@@ -289,7 +289,6 @@ pub fn validate_proj_repo(path: &Path) -> Result<()> {
     Ok(())
 }
 
-
 /// Helper function that recursivly links all the source code files
 fn link_dep_files_h(
     dep: &Dependency,
@@ -318,11 +317,10 @@ fn link_dep_files_h(
         Language::Cuda => [".c", ".cpp", ".cu"].as_slice(),
     };
 
-
     for file in source_dir.read_dir()? {
         let file = match file {
             Ok(r) => r,
-            Err(err) =>  {
+            Err(err) => {
                 dbg!(err);
                 continue;
             }
@@ -331,10 +329,7 @@ fn link_dep_files_h(
             continue;
         }
 
-        let filename = file.file_name()
-            .to_str()
-            .unwrap()
-            .to_string();
+        let filename = file.file_name().to_str().unwrap().to_string();
 
         if !valid_ext.iter().any(|&ext| filename.ends_with(ext)) {
             continue;
@@ -351,13 +346,10 @@ fn link_dep_files_h(
         filenames.insert(filename.clone(), dep.uri.clone());
 
         let filepath = source_dir.join(&filename);
-        let filepath = filepath.to_str()
-            .unwrap()
-            .to_string();
+        let filepath = filepath.to_str().unwrap().to_string();
 
         out_buffer.push(filepath);
     }
-
 
     // Recursivley handle chain dependnecies
     if let Some(kiln_cfg) = dep.get_kiln_cfg()? {
@@ -390,10 +382,7 @@ fn link_dep_headers_h(
         None => return Err(anyhow!("{} has an ambiguous include dir", &dep.uri)),
     };
 
-    let inc_dir_string = include_dir
-        .to_str()
-        .unwrap()
-        .to_string();
+    let inc_dir_string = include_dir.to_str().unwrap().to_string();
 
     if !include_dir.is_dir() {
         eprintln!("Path to include directory points to a non-directory");
@@ -403,7 +392,7 @@ fn link_dep_headers_h(
     }
 
     out_buffer.push(inc_dir_string);
-    
+
     // Recursivley handle chain dependnecies
     if let Some(kiln_cfg) = dep.get_kiln_cfg()? {
         if let Some(chain_deps) = kiln_cfg.dependency {

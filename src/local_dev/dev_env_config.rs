@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
-
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, EnumIter)]
 pub enum EditorType {
     VsCode,
@@ -15,5 +14,3 @@ pub enum EditorType {
 pub struct DevEnvConfig {
     pub editor: Option<EditorType>,
 }
-
-

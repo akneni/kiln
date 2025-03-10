@@ -1,5 +1,5 @@
-use crate::{constants::VALGRIND_OUT, lexer, utils};
 use crate::testing::valgrind::VgOutput;
+use crate::{constants::VALGRIND_OUT, lexer, utils};
 
 use anyhow::{anyhow, Result};
 use std::{
@@ -10,8 +10,6 @@ use std::{
     process::{self, Command},
     sync::{Arc, Mutex},
 };
-
-
 
 /// This checks if unsafe functions exist within a line using general string parsing
 /// This is messy and prone to false positives.

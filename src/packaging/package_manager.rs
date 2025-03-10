@@ -1,4 +1,4 @@
-use crate::config::{self, Dependency, Config};
+use crate::config::{self, Config, Dependency};
 use crate::constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE};
 use crate::packaging::kiln_package::KilnPackageConfig;
 
@@ -138,10 +138,9 @@ async fn find_tags(owner: &str, repo_name: &str) -> Result<Vec<Tag>, PkgError> {
     let tags: Vec<Tag> = serde_json::from_str(&body)?;
     let mut packages = vec![];
     for t in tags {
-        
         packages.push(t);
     }
-    
+
     Ok(packages)
 }
 
@@ -151,7 +150,9 @@ async fn install_globally(package: &Dependency, tag: &Tag) -> Result<(), PkgErro
     let package_dir = package.get_global_path();
     let tarball_tmp_name = format!(
         "{}_{}_{}",
-        &package.owner(), &package.repo_name(), &package.version
+        &package.owner(),
+        &package.repo_name(),
+        &package.version
     );
 
     if package_dir.exists() {
@@ -281,18 +282,19 @@ async fn add_package(
             }
         }
         if !assigned {
-            let msg = format!("Version {} does not exist for https:://{}/{}", v, owner, proj_name);
+            let msg = format!(
+                "Version {} does not exist for https:://{}/{}",
+                v, owner, proj_name
+            );
             return Err(PkgError::UsrErr(msg));
         }
-    }
-    else {
+    } else {
         tag = tags.last().unwrap();
     }
 
     let pkg = Dependency::new(&owner, &proj_name, &tag.name);
 
     install_globally(&pkg, &tag).await?;
-
 
     if let None = pkg.get_include_dir()? {
         let mut stdin_buf = String::new();
@@ -324,12 +326,7 @@ async fn add_package(
         .unwrap()
         .to_string();
 
-    let source_dir = pkg
-        .get_source_dir()?
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
+    let source_dir = pkg.get_source_dir()?.unwrap().to_str().unwrap().to_string();
 
     let mut pkg = pkg;
 
@@ -359,9 +356,8 @@ async fn add_package(
     Ok((chain_dep_ids, pkg))
 }
 
-
 /// Ensures that all the packages listed in the Kiln.toml config file are
-/// all installed globally. Any that are listed but are not installed will be 
+/// all installed globally. Any that are listed but are not installed will be
 /// returned
 pub fn check_pkgs<'a>(config: &'a Config) -> Vec<[String; 3]> {
     let mut not_installed = vec![];
@@ -376,7 +372,11 @@ pub fn check_pkgs<'a>(config: &'a Config) -> Vec<[String; 3]> {
     not_installed
 }
 
-fn check_pkg_h(dep: &Dependency, output: &mut Vec<[String; 3]>, pkgs_visited: &mut HashSet<String>) {
+fn check_pkg_h(
+    dep: &Dependency,
+    output: &mut Vec<[String; 3]>,
+    pkgs_visited: &mut HashSet<String>,
+) {
     if pkgs_visited.contains(dep.uri.as_str()) {
         return;
     }
@@ -403,7 +403,6 @@ fn check_pkg_h(dep: &Dependency, output: &mut Vec<[String; 3]>, pkgs_visited: &m
         }
     }
 }
-
 
 fn unpack_without_top_folder<R: std::io::Read>(reader: R, dst: &Path) -> Result<(), PkgError> {
     let mut archive = Archive::new(reader);

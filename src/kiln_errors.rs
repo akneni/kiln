@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone)]
 pub enum KilnErrType {
     FileNotFound,
@@ -14,7 +13,6 @@ pub struct KilnError {
 }
 
 pub type KilnResult<T> = Result<T, KilnError>;
-
 
 impl KilnError {
     pub fn new_unknown(msg: impl Into<String>) -> Self {

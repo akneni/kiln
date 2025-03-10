@@ -39,11 +39,7 @@ pub enum Token<'a> {
 #[inline]
 fn is_udt_kwargs(token: &Token) -> bool {
     match token {
-        Token::Object("struct")
-        | Token::Object("enum")
-        | Token::Object("union") => {
-            true
-        }
+        Token::Object("struct") | Token::Object("enum") | Token::Object("union") => true,
         _ => false,
     }
 }
@@ -89,14 +85,14 @@ impl<'a> Token<'a> {
         let mut output = String::new();
         let mut indent_level = 0;
         let mut start_of_line = true;
-    
+
         for (i, token) in tokens.iter().enumerate() {
             // At the beginning of a new line, insert indentation based on the current indent_level.
             if start_of_line {
                 output.push_str(&"    ".repeat(indent_level));
                 start_of_line = false;
             }
-    
+
             match token {
                 Token::Object(s) => {
                     if i > 0 && !output.ends_with('\n') {
@@ -157,18 +153,16 @@ impl<'a> Token<'a> {
                 }
             }
         }
-    
+
         // Post-process the output to remove any blank lines (lines that contain only whitespace).
         let cleaned = output
             .split("\n")
             .filter(|line| !line.trim().is_empty())
             .collect::<Vec<_>>()
             .join("\n");
-            
+
         cleaned
-    }    
-    
-    
+    }
 }
 
 pub fn tokenize(code: &str) -> Result<Vec<Token>> {
@@ -295,14 +289,14 @@ fn find_len_string_literal(code_bytes: &[u8]) -> Result<usize> {
 
 /// Gets the ranges (as [start, end] byte offsets) from the `byte_idx` vector to keep,
 /// excluding the token slices in `exclude_tokens`.
-/// 
+///
 /// Both `tokens` and `byte_idx` are assumed to be parallel; i.e. the ith element of `byte_idx`
 /// gives the starting offset of the ith token in `tokens`. In an ideal setup, `byte_idx` would have
 /// one extra element (the file length) to mark the end of the last token.
 pub fn get_inclusion_ranges(
     tokens: &Vec<Token>,
     byte_idx: &Vec<usize>,
-    exclude_tokens: &[&[Token]]
+    exclude_tokens: &[&[Token]],
 ) -> Vec<[usize; 2]> {
     let mut inclusion_ranges = Vec::new();
     // current_inclusion_start marks the index (in tokens) where the current “keep” region began.
@@ -326,10 +320,7 @@ pub fn get_inclusion_ranges(
         if let Some(skip_len) = matched_exclusion {
             // End the current inclusion region (if nonempty) at the beginning of the exclusion.
             if current_inclusion_start < i {
-                inclusion_ranges.push([
-                    byte_idx[current_inclusion_start],
-                    byte_idx[i]
-                ]);
+                inclusion_ranges.push([byte_idx[current_inclusion_start], byte_idx[i]]);
             }
             // Skip over the excluded tokens.
             i += skip_len;
@@ -362,7 +353,7 @@ pub fn merge_inclusion_ranges(code: &str, inclusion_ranges: &Vec<[usize; 2]>) ->
         return new_code;
     }
 
-    for range in inclusion_ranges[..inclusion_ranges.len()-1].iter() {
+    for range in inclusion_ranges[..inclusion_ranges.len() - 1].iter() {
         new_code.push_str(&code[range[0]..range[1]]);
     }
 
@@ -511,7 +502,6 @@ const TOKEN_MAPPING: [Option<Token>; 128] = [
 
 const RESTRICTED_KWARGS: &[&str] = &["for", "while", "if"];
 
-
 pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     let mut fn_defs = vec![];
 
@@ -574,12 +564,16 @@ pub fn get_includes<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     let mut idx: usize = 0;
     while idx < tokens.len() {
         if let Token::HashTag = tokens[idx] {
-            if tokens[idx+1] != Token::Object("include") {
+            if tokens[idx + 1] != Token::Object("include") {
                 idx += 1;
                 continue;
             }
             let mut end = idx;
-            skip_to_oneof(tokens, &[Token::GreaterThan, Token::Literal("\"")], &mut end);
+            skip_to_oneof(
+                tokens,
+                &[Token::GreaterThan, Token::Literal("\"")],
+                &mut end,
+            );
             includes.push(&tokens[idx..(end + 1)]);
             idx = end;
             continue;
@@ -656,17 +650,17 @@ pub fn get_defines<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
         if tokens[idx] != Token::HashTag {
             skip_to(tokens, Token::HashTag, &mut idx);
         }
-        
+
         let start_idx = idx;
 
-        if idx + 1 >= tokens.len() || tokens[idx+1] != Token::Object("define") {
+        if idx + 1 >= tokens.len() || tokens[idx + 1] != Token::Object("define") {
             idx += 2;
             continue;
         }
         idx += 1;
 
         skip_to(tokens, Token::NewLine, &mut idx);
-        while idx < tokens.len() && tokens[idx-1] == Token::BackSlash {
+        while idx < tokens.len() && tokens[idx - 1] == Token::BackSlash {
             skip_to(tokens, Token::NewLine, &mut idx);
         }
 
@@ -706,9 +700,7 @@ pub fn get_udt_name<'a>(tokens: &'a [Token]) -> &'a str {
             unreachable!("No valid struct name found in user defined type definition");
         }
         // Handle regular struct definitions
-        Token::Object("struct") 
-        | Token::Object("enum") 
-        | Token::Object("union") => {
+        Token::Object("struct") | Token::Object("enum") | Token::Object("union") => {
             // Expect the struct name to immediately follow the "struct" keyword.
             if let Token::Object(name) = tokens[1] {
                 return name;
@@ -720,11 +712,9 @@ pub fn get_udt_name<'a>(tokens: &'a [Token]) -> &'a str {
     }
 }
 
-
-
 /// Gets the name of the define statement
 /// Ex) for `#define FOO 42`, this would return "FOO"
-pub fn get_define_name<'a>(tokens: &'a[Token]) -> &'a str  {
+pub fn get_define_name<'a>(tokens: &'a [Token]) -> &'a str {
     if tokens.len() < 3 || tokens[0] != Token::HashTag || tokens[1] != Token::Object("define") {
         unreachable!("Token string is not a valid define macro");
     }
@@ -767,7 +757,7 @@ fn udt_len(tokens: &[Token]) -> Option<usize> {
     None
 }
 
-/// Updates `idx` to point to the next token specified. If the 
+/// Updates `idx` to point to the next token specified. If the
 /// token does not exist, `idx` will be set equal to tokens.len()
 fn skip_to(tokens: &[Token], target: Token, idx: &mut usize) {
     for i in (*idx + 1)..tokens.len() {
@@ -794,7 +784,6 @@ fn skip_to_oneof(tokens: &[Token], targets: &[Token], idx: &mut usize) {
     }
 }
 
-
 #[cfg(test)]
 mod lexer_tests {
     use std::fs;
@@ -816,7 +805,10 @@ mod lexer_tests {
 
         fs::write("tests/lexer.test_get_defines.log", format!("{}", log_dump)).unwrap();
 
-        assert_eq!(defines.len(), s.split("#define").collect::<Vec<&str>>().len() - 1);
+        assert_eq!(
+            defines.len(),
+            s.split("#define").collect::<Vec<&str>>().len() - 1
+        );
     }
 
     #[test]
@@ -846,13 +838,18 @@ mod lexer_tests {
         for &d in &defines {
             names.push(get_define_name(d));
         }
-        
-        assert_eq!(defines.len(), s.split("#define").collect::<Vec<&str>>().len() - 1);
 
-        fs::write("tests/lexer.test_get_define_name.log", format!("{:#?}", names))
-            .unwrap();
+        assert_eq!(
+            defines.len(),
+            s.split("#define").collect::<Vec<&str>>().len() - 1
+        );
+
+        fs::write(
+            "tests/lexer.test_get_define_name.log",
+            format!("{:#?}", names),
+        )
+        .unwrap();
     }
-
 
     #[test]
     fn test_get_udt_name() {
@@ -865,9 +862,8 @@ mod lexer_tests {
         for &d in &structs {
             names.push(get_udt_name(d));
         }
-        
-        fs::write("tests/lexer.test_get_udt_name.log", format!("{:#?}", names))
-            .unwrap();
+
+        fs::write("tests/lexer.test_get_udt_name.log", format!("{:#?}", names)).unwrap();
     }
 
     #[test]
@@ -887,10 +883,7 @@ mod lexer_tests {
             log_dump.push_str(&s_exact);
             log_dump.push_str("\n\n\n");
         }
-    
 
-        fs::write("tests/lexer.test_udt_tokens_to_string.log", &log_dump)
-            .unwrap();
+        fs::write("tests/lexer.test_udt_tokens_to_string.log", &log_dump).unwrap();
     }
-
 }

@@ -2,25 +2,24 @@ mod build_sys;
 mod cli;
 mod config;
 mod constants;
-mod utils;
-mod kiln_errors;
 mod header_gen;
-mod packaging;
+mod kiln_errors;
 mod local_dev;
+mod packaging;
 mod testing;
+mod utils;
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use config::Config;
 use constants::{CONFIG_FILE, DEV_ENV_CFG_FILE, PACKAGE_DIR, SEPARATOR};
-use packaging::package_manager::{self, PkgError};
-use strum::IntoEnumIterator;
-use std::{env, fs, io::Write, path::Path, process, time};
-use utils::Language;
 use header_gen::lexer;
-use local_dev::{editors, dev_env_config};
+use local_dev::{dev_env_config, editors};
+use packaging::package_manager::{self, PkgError};
+use std::{env, fs, io::Write, path::Path, process, time};
+use strum::IntoEnumIterator;
 use testing::{safety, valgrind::VgOutput};
-
+use utils::Language;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -159,7 +158,10 @@ async fn main() {
 
             for &b_type in config.project.build_type.iter() {
                 if let Err(e) = handle_build(&profile, &config, b_type) {
-                    eprintln!("An error occurred while building the project (build mode {:?}):\n{}", b_type, e);
+                    eprintln!(
+                        "An error occurred while building the project (build mode {:?}):\n{}",
+                        b_type, e
+                    );
                     process::exit(1);
                 }
             }
@@ -230,62 +232,61 @@ async fn main() {
                 }
             }
         }
-        cli::Commands::LocalDev { subcommand } => {
-            match subcommand {
-                cli::LocalDevSubCmd::SetEditor => {
-                    if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
-                        println!("{}", e);
-                        process::exit(1);
-                    }
-                    let config = config.unwrap();
+        cli::Commands::LocalDev { subcommand } => match subcommand {
+            cli::LocalDevSubCmd::SetEditor => {
+                if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
+                    println!("{}", e);
+                    process::exit(1);
+                }
+                let config = config.unwrap();
 
-                    let cwd = env::current_dir().unwrap();
-                    let editor_types: Vec<dev_env_config::EditorType> = dev_env_config::EditorType::iter().collect();
+                let cwd = env::current_dir().unwrap();
+                let editor_types: Vec<dev_env_config::EditorType> =
+                    dev_env_config::EditorType::iter().collect();
 
-                    for (i, e) in editor_types.iter().enumerate() {
-                        println!("{}) {:?}", i, e);
-                    }
-                    println!("------------------");
-                    println!("Choose an editor: ");
-                    std::io::stdout().flush().unwrap();
+                for (i, e) in editor_types.iter().enumerate() {
+                    println!("{}) {:?}", i, e);
+                }
+                println!("------------------");
+                println!("Choose an editor: ");
+                std::io::stdout().flush().unwrap();
 
-                    let mut s_in = "".to_string();
-                    std::io::stdin().read_line(&mut s_in).unwrap();
+                let mut s_in = "".to_string();
+                std::io::stdin().read_line(&mut s_in).unwrap();
 
-                    if let Ok(editor_num) = s_in.trim().parse::<usize>() {
-                        if editor_num >= editor_types.len() {
-                            eprintln!("Index `{}` doesn't match any editor", s_in);
-                            process::exit(0);
-                        }
-                        
-                        let local_config = dev_env_config::DevEnvConfig {
-                            editor: Some(editor_types[editor_num]),
-                        };
-
-                        let local_config_str = toml::to_string(&local_config).unwrap();
-                        
-                        let dev_env_f = cwd.join(DEV_ENV_CFG_FILE);
-
-                        fs::write(&dev_env_f, &local_config_str).unwrap();
-                    } else {
-                        eprintln!("Error parsing `{}`", s_in);
+                if let Ok(editor_num) = s_in.trim().parse::<usize>() {
+                    if editor_num >= editor_types.len() {
+                        eprintln!("Index `{}` doesn't match any editor", s_in);
                         process::exit(0);
                     }
 
-                    editors::handle_editor_includes(&config, &cwd).unwrap();
-                }
-                cli::LocalDevSubCmd::UpdateEditorInc => {
-                    if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
-                        println!("{}", e);
-                        process::exit(1);
-                    }
-                    let config = config.unwrap();
-                    let cwd = env::current_dir().unwrap();
+                    let local_config = dev_env_config::DevEnvConfig {
+                        editor: Some(editor_types[editor_num]),
+                    };
 
-                    editors::handle_editor_includes(&config, cwd).unwrap();
+                    let local_config_str = toml::to_string(&local_config).unwrap();
+
+                    let dev_env_f = cwd.join(DEV_ENV_CFG_FILE);
+
+                    fs::write(&dev_env_f, &local_config_str).unwrap();
+                } else {
+                    eprintln!("Error parsing `{}`", s_in);
+                    process::exit(0);
                 }
+
+                editors::handle_editor_includes(&config, &cwd).unwrap();
             }
-        }
+            cli::LocalDevSubCmd::UpdateEditorInc => {
+                if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
+                    println!("{}", e);
+                    process::exit(1);
+                }
+                let config = config.unwrap();
+                let cwd = env::current_dir().unwrap();
+
+                editors::handle_editor_includes(&config, cwd).unwrap();
+            }
+        },
     }
 }
 
@@ -350,21 +351,19 @@ fn handle_build(profile: &str, config: &Config, build_type: config::BuildType) -
         build_type,
     )?;
 
-    #[cfg(debug_assertions)] 
+    #[cfg(debug_assertions)]
     {
         println!("{}\n\n", compilation_cmd.join(" "));
     }
 
     let build_dir = match build_type {
-        config::BuildType::StaticLibrary => {
-            env::current_dir().unwrap()
-                .join("build")
-                .join(&profile[2..])
-                .join("obj")
-        }
+        config::BuildType::StaticLibrary => env::current_dir()
+            .unwrap()
+            .join("build")
+            .join(&profile[2..])
+            .join("obj"),
         _ => env::current_dir().unwrap(),
     };
-
 
     let command = compilation_cmd.join(" ");
     let (shell, flag) = if cfg!(target_os = "windows") {
@@ -434,8 +433,6 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
     let src_dir = cwd.join(src_dir);
     let inc_dir = cwd.join(inc_dir);
 
-    
-
     for file in fs::read_dir(&src_dir).unwrap() {
         if let Ok(file) = file {
             let raw_name = file.file_name();
@@ -448,8 +445,7 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             let code = fs::read_to_string(file.path())?;
             let (tokens, byte_idx) = lexer::tokenize_unclean(&code)?;
 
-            let code_h =
-                fs::read_to_string(inc_dir.join(&header_name)).unwrap_or("".to_string());
+            let code_h = fs::read_to_string(inc_dir.join(&header_name)).unwrap_or("".to_string());
             let (tokens_h, _) = lexer::tokenize_unclean(&code_h)?;
 
             let mut defines_h = lexer::get_defines(&tokens_h);
@@ -463,7 +459,7 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             // Ensure headerfiles don't include themselves
             let includes = header_gen::filter_out_includes(&includes, raw_name);
 
-            // Skip the first definition to skip the #ifndef NAME_H #define NAME_H 
+            // Skip the first definition to skip the #ifndef NAME_H #define NAME_H
             if defines_h.len() > 0 {
                 defines_h.remove(0);
             }
@@ -473,7 +469,7 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
                 eprintln!("Error: {}", e);
                 process::exit(1);
             }
-            
+
             let res = header_gen::merge_udts(&mut udts_h, &udts);
             if let Err(e) = res {
                 eprintln!("Error: {}", e);
@@ -537,7 +533,7 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
 }
 
 /// Checks the deps listed in Kiln.Toml config for any that aren't installed globally.
-/// If it fins finds any such packages, it installs them. 
+/// If it fins finds any such packages, it installs them.
 async fn handle_check_installs(config: &Config) {
     let timer = time::Instant::now();
 

@@ -173,7 +173,6 @@ pub fn join_rel_path(abs_path: impl AsRef<Path>, rel_path: &str) -> PathBuf {
     let path = abs_path.as_ref();
     match rel_path {
         "" | "." | "./" => path.to_path_buf(),
-        _ => path.join(rel_path)
+        _ => path.join(rel_path),
     }
 }
-

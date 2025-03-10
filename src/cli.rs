@@ -42,7 +42,7 @@ pub enum Commands {
 
     LocalDev {
         #[command(subcommand)]
-        subcommand: LocalDevSubCmd
+        subcommand: LocalDevSubCmd,
     },
 }
 
@@ -65,7 +65,7 @@ impl Commands {
 #[derive(Subcommand, Debug)]
 pub enum LocalDevSubCmd {
     SetEditor,
-    UpdateEditorInc
+    UpdateEditorInc,
 }
 
 #[allow(unused)]

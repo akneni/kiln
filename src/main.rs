@@ -542,6 +542,11 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             headers.push('\n');
 
             for &func in &fn_defs {
+                // turn `inline void XXX() {}` in .c into `extern inline void XXX();` in .h
+                if func[0] == lexer::Token::Object("inline") {
+                    headers.push_str("extern ");
+                }
+
                 let s = lexer::Token::tokens_to_string(func);
                 headers.push_str(&s);
                 headers.push_str(";\n");

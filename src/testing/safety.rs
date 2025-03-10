@@ -1,5 +1,5 @@
 use crate::testing::valgrind::VgOutput;
-use crate::{constants::VALGRIND_OUT, lexer, utils};
+use crate::{constants::VALGRIND_OUT, lexer_c, utils};
 
 use anyhow::{anyhow, Result};
 use std::{
@@ -109,7 +109,7 @@ fn scan_file(filename: &str, source_code: &str, func_map: &FunctionMap) -> Vec<W
             continue;
         }
 
-        let tokens = match lexer::tokenize(line) {
+        let tokens = match lexer_c::tokenize(line) {
             Ok(t) => t,
             Err(_) => continue,
         };
@@ -118,8 +118,8 @@ fn scan_file(filename: &str, source_code: &str, func_map: &FunctionMap) -> Vec<W
         }
 
         for i in 0..(tokens.len() - 1) {
-            if let lexer::Token::Object(obj) = tokens[i] {
-                if tokens[i + 1] != lexer::Token::OpenParen {
+            if let lexer_c::Token::Object(obj) = tokens[i] {
+                if tokens[i + 1] != lexer_c::Token::OpenParen {
                     continue;
                 }
                 if let Some(safe_fn) = func_map.map.get(obj) {

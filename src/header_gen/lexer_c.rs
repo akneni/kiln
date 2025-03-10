@@ -505,30 +505,32 @@ const RESTRICTED_KWARGS: &[&str] = &["for", "while", "if"];
 pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     let mut fn_defs = vec![];
 
-    // This is in fact used, idk why it's telling me it's not
-    #[allow(unused)]
-    let mut conditions = [
-        false, // Starts with two objects
-        false, // Has open paren
-        false, // Has close paren
-    ];
+    let mut conditions: [bool; 3];
 
-    let mut i: usize = 0;
-    while i < tokens.len() {
-        conditions = [false, false, false];
-        if let Token::Object(obj) = tokens[i] {
+    let mut idx: usize = 0;
+    while idx < tokens.len() {
+        conditions = [
+            false, // Starts with at least two objects
+            false, // Has open paren
+            false, // Has close paren
+        ];
+
+        if let Token::Object(obj) = tokens[idx] {
             if RESTRICTED_KWARGS.contains(&obj) {
-                skip_to(tokens, Token::CloseParen, &mut i);
+                skip_to(tokens, Token::CloseParen, &mut idx);
                 continue;
             } else if obj == "include" {
-                skip_to_oneof(tokens, &[Token::GreaterThan, Token::Literal("\"")], &mut i);
+                skip_to_oneof(tokens, &[Token::GreaterThan, Token::Literal("\"")], &mut idx);
                 continue;
             } else if obj == "define" {
-                skip_to(tokens, Token::NewLine, &mut i);
+                skip_to(tokens, Token::NewLine, &mut idx);
+                continue;
+            } else if matches!(obj, "return" | "if") {
+                idx += 1;
                 continue;
             }
 
-            let mut j = i + 1;
+            let mut j = idx + 1;
             while j < tokens.len() {
                 if let Token::Object(obj_2) = tokens[j] {
                     if RESTRICTED_KWARGS.contains(&obj_2) || obj_2 == "main" {
@@ -541,18 +543,20 @@ pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                     conditions[2] = true;
                 } else if let Token::OpenCurlyBrace = tokens[j] {
                     if conditions.iter().all(|&i| i) {
-                        fn_defs.push(&tokens[i..j]);
+                        fn_defs.push(&tokens[idx..j]);
                     }
                     break;
                 } else if let Token::Semicolon = tokens[j] {
                     break;
+                } else if let Token::Equal = tokens[j] {
+                    break;
                 }
                 j += 1;
             }
-            i = j + 1;
+            idx = j + 1;
             continue;
         }
-        i += 1;
+        idx += 1;
     }
 
     fn_defs

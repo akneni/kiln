@@ -13,7 +13,7 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use config::Config;
 use constants::{CONFIG_FILE, DEV_ENV_CFG_FILE, PACKAGE_DIR, SEPARATOR};
-use header_gen::lexer;
+use header_gen::lexer_c;
 use local_dev::{dev_env_config, editors};
 use packaging::package_manager::{self, PkgError};
 use std::{env, fs, io::Write, path::Path, process, time};
@@ -483,18 +483,18 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             let header_name = format!("{}.h", raw_name);
 
             let code = fs::read_to_string(file.path())?;
-            let (tokens, byte_idx) = lexer::tokenize_unclean(&code)?;
+            let (tokens, byte_idx) = lexer_c::tokenize_unclean(&code)?;
 
             let code_h = fs::read_to_string(inc_dir.join(&header_name)).unwrap_or("".to_string());
-            let (tokens_h, _) = lexer::tokenize_unclean(&code_h)?;
+            let (tokens_h, _) = lexer_c::tokenize_unclean(&code_h)?;
 
-            let mut defines_h = lexer::get_defines(&tokens_h);
-            let mut udts_h = lexer::get_udts(&tokens_h);
+            let mut defines_h = lexer_c::get_defines(&tokens_h);
+            let mut udts_h = lexer_c::get_udts(&tokens_h);
 
-            let fn_defs = lexer::get_fn_def(&tokens);
-            let includes = lexer::get_includes(&tokens);
-            let defines = lexer::get_defines(&tokens);
-            let udts = lexer::get_udts(&tokens);
+            let fn_defs = lexer_c::get_fn_def(&tokens);
+            let includes = lexer_c::get_includes(&tokens);
+            let defines = lexer_c::get_defines(&tokens);
+            let udts = lexer_c::get_udts(&tokens);
 
             // Ensure headerfiles don't include themselves
             let includes = header_gen::filter_out_includes(&includes, raw_name);
@@ -522,32 +522,32 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             headers.push_str(&format!("#define {}_H\n\n", raw_name.to_uppercase()));
 
             for &inc in &includes {
-                let s = lexer::Token::tokens_to_string(inc);
+                let s = lexer_c::Token::tokens_to_string(inc);
                 headers.push_str(&s);
                 headers.push('\n');
             }
             headers.push('\n');
 
             for &def in &defines_h {
-                let s = lexer::Token::tokens_to_string(def);
+                let s = lexer_c::Token::tokens_to_string(def);
                 headers.push_str(&s);
                 headers.push('\n');
             }
             headers.push('\n');
 
             for &struc in &udts_h {
-                headers.push_str(&lexer::Token::tokens_to_string(struc).trim());
+                headers.push_str(&lexer_c::Token::tokens_to_string(struc).trim());
                 headers.push_str("\n\n");
             }
             headers.push('\n');
 
             for &func in &fn_defs {
                 // turn `inline void XXX() {}` in .c into `extern inline void XXX();` in .h
-                if func[0] == lexer::Token::Object("inline") {
+                if func[0] == lexer_c::Token::Object("inline") {
                     headers.push_str("extern ");
                 }
 
-                let s = lexer::Token::tokens_to_string(func);
+                let s = lexer_c::Token::tokens_to_string(func);
                 headers.push_str(&s);
                 headers.push_str(";\n");
             }
@@ -560,8 +560,8 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             let mut exclude_tokens = udts;
             exclude_tokens.extend_from_slice(&defines);
 
-            let inclusion_ranges = lexer::get_inclusion_ranges(&tokens, &byte_idx, &exclude_tokens);
-            let mut new_code = lexer::merge_inclusion_ranges(&code, &inclusion_ranges);
+            let inclusion_ranges = lexer_c::get_inclusion_ranges(&tokens, &byte_idx, &exclude_tokens);
+            let mut new_code = lexer_c::merge_inclusion_ranges(&code, &inclusion_ranges);
 
             let header_inc_path = format!("\"../include/{}\"", &header_name);
 

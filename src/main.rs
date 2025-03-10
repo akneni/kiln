@@ -232,6 +232,14 @@ async fn main() {
                 }
             }
         }
+        cli::Commands::Test { tests } => {
+            let test_dir = Path::new("tests");
+            if !test_dir.exists() {
+                process::exit(0);
+            }
+
+            
+        }
         cli::Commands::LocalDev { subcommand } => match subcommand {
             cli::LocalDevSubCmd::SetEditor => {
                 if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
@@ -319,7 +327,6 @@ fn handle_build(profile: &str, config: &Config, build_type: config::BuildType) -
         eprintln!("Error: profile must start with `--`");
         process::exit(1);
     }
-    build_sys::validate_build_dir()?;
 
     let cwd = env::current_dir().unwrap();
 
@@ -552,4 +559,75 @@ async fn handle_check_installs(config: &Config) {
     }
 
     dbg!(timer.elapsed());
+}
+
+fn handle_tests(profile: &str, config: &Config, test_file: &str) -> Result<()> {
+    if !profile.starts_with("--") {
+        eprintln!("Error: profile must start with `--`");
+        process::exit(1);
+    }
+
+    let cwd = env::current_dir().unwrap();
+
+    let build_dir = cwd.join("build").join(&profile[2..]);
+    if !build_dir.exists() {
+        fs::create_dir_all(&build_dir).unwrap();
+    }
+
+    let lang = Language::new(&config.project.language).unwrap();
+    let mut link_file = vec![];
+    build_sys::link_dep_files(&config, lang, &mut link_file)?;
+    build_sys::link_proj_files(&config, &cwd, lang, &mut link_file)
+        .map_err(|err| anyhow!("Failed to link source files: {}", err))?;
+
+    link_file.push(test_file.to_string());
+
+    let link_lib = build_sys::link_sys_lib(&cwd);
+    let opt_flags = build_sys::opt_flags(&profile, config).unwrap();
+
+    let header_dirs = build_sys::link_dep_headers(&config)?;
+    let so_dir = build_sys::link_dep_shared_obj(&cwd)?;
+
+    let compilation_cmd = build_sys::full_compilation_cmd(
+        config,
+        &profile,
+        &link_file,
+        &link_lib,
+        &header_dirs,
+        &so_dir,
+        &opt_flags,
+        config::BuildType::Exe,
+    )?;
+
+    let output = process::Command::new(&compilation_cmd[0])
+        .args(&compilation_cmd[1..])
+        .stdout(process::Stdio::piped())
+        .stdin(process::Stdio::null())
+        .stderr(process::Stdio::piped())
+        .output()?;
+
+    if !output.status.success() {
+        let msg = String::from_utf8(output.stderr).unwrap_or("unknown stderr".to_string());
+        return Err(anyhow!("Compilation failed for `{}`:\n{}", test_file, msg));
+    }
+
+    let bin_path = cwd
+        .join("build")
+        .join(&profile[2..])
+        .join(&config.project.name);
+
+    if !bin_path.exists() {
+        return Err(anyhow!("Binary {:?} does not exist", bin_path));
+    }
+
+    let _output = process::Command::new(&bin_path)
+        .stdin(process::Stdio::inherit())
+        .stdout(process::Stdio::inherit())
+        .stderr(process::Stdio::inherit())
+        .output()
+        .map_err(|e| anyhow!("Failed to run {:?} binary: {}", bin_path, e))?;
+
+    fs::remove_file(bin_path)?;
+    
+    Ok(())
 }

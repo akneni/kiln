@@ -405,16 +405,3 @@ fn link_dep_headers_h(
     Ok(())
 }
 
-pub fn validate_build_dir() -> Result<()> {
-    let a = Path::new("build/release");
-    let b = Path::new("build/debug");
-
-    if !a.exists() {
-        fs::create_dir_all(a)?;
-    }
-    if !b.exists() {
-        fs::create_dir_all(b)?;
-    }
-
-    Ok(())
-}

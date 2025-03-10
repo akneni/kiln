@@ -40,6 +40,9 @@ pub enum Commands {
         valgrind: bool,
     },
 
+    Test {
+        tests: Option<Vec<String>>
+    },
     LocalDev {
         #[command(subcommand)]
         subcommand: LocalDevSubCmd,

@@ -233,12 +233,45 @@ async fn main() {
             }
         }
         cli::Commands::Test { tests } => {
+            if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
+                println!("{}", e);
+                process::exit(1);
+            }
+            let config = config.unwrap();
+
             let test_dir = Path::new("tests");
             if !test_dir.exists() {
                 process::exit(0);
             }
 
-            
+            if let Some(_tests) = tests.as_ref() {
+                eprintln!("running specific tests not yet supported");
+                std::process::exit(0);
+            }
+
+            let seperator = "=".repeat(40);
+            println!("\n\n");
+            if let Ok(test_dir) = test_dir.read_dir() {
+                for file in test_dir {
+                    if let Ok(file) = file {
+                        println!("{a}\n{b:?}\n{a}", a=seperator, b=file.file_name());
+                        
+                        let filepath = file.path();
+                        let filepath = filepath.to_str()
+                            .unwrap();
+
+                        let res = handle_tests("--debug", &config, filepath);
+                        if let Err(err) = res {
+                            println!("{}", err);
+                        }
+
+                        println!("{}\n\n\n", seperator);
+                    }
+                }
+            } else {
+                eprintln!("unable to read test directory");
+                process::exit(1);
+            }
         }
         cli::Commands::LocalDev { subcommand } => match subcommand {
             cli::LocalDevSubCmd::SetEditor => {

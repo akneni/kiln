@@ -299,7 +299,7 @@ fn find_len_string_literal(code_bytes: &[u8]) -> Result<usize> {
 /// Both `tokens` and `byte_idx` are assumed to be parallel; i.e. the ith element of `byte_idx`
 /// gives the starting offset of the ith token in `tokens`. In an ideal setup, `byte_idx` would have
 /// one extra element (the file length) to mark the end of the last token.
-pub(super) fn get_inclusion_ranges(
+pub fn get_inclusion_ranges(
     tokens: &Vec<Token>,
     byte_idx: &Vec<usize>,
     exclude_tokens: &[&[Token]]
@@ -356,7 +356,7 @@ pub(super) fn get_inclusion_ranges(
     inclusion_ranges
 }
 
-pub(super) fn merge_inclusion_ranges(code: &str, inclusion_ranges: &Vec<[usize; 2]>) -> String {
+pub fn merge_inclusion_ranges(code: &str, inclusion_ranges: &Vec<[usize; 2]>) -> String {
     let mut new_code = "".to_string();
     if inclusion_ranges.len() == 0 {
         return new_code;
@@ -678,7 +678,7 @@ pub fn get_defines<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
 
 /// Gets the name of the struct
 /// Ex) for `struct Point {...}`, this would return "Point"
-pub(super) fn get_udt_name<'a>(tokens: &'a [Token]) -> &'a str {
+pub fn get_udt_name<'a>(tokens: &'a [Token]) -> &'a str {
     if tokens.len() < 3 {
         unreachable!("Token string is not a valid user defined type definition");
     }
@@ -724,7 +724,7 @@ pub(super) fn get_udt_name<'a>(tokens: &'a [Token]) -> &'a str {
 
 /// Gets the name of the define statement
 /// Ex) for `#define FOO 42`, this would return "FOO"
-pub(super) fn get_define_name<'a>(tokens: &'a[Token]) -> &'a str  {
+pub fn get_define_name<'a>(tokens: &'a[Token]) -> &'a str  {
     if tokens.len() < 3 || tokens[0] != Token::HashTag || tokens[1] != Token::Object("define") {
         unreachable!("Token string is not a valid define macro");
     }

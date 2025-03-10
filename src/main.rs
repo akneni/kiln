@@ -2,27 +2,25 @@ mod build_sys;
 mod cli;
 mod config;
 mod constants;
-mod kiln_package;
-mod lexer;
-mod headers_gen;
-mod package_manager;
-mod safety;
 mod utils;
-mod valgrind;
-mod dev_env_config;
 mod kiln_errors;
-mod editors;
+mod header_gen;
+mod packaging;
+mod local_dev;
+mod testing;
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use config::Config;
 use constants::{CONFIG_FILE, DEV_ENV_CFG_FILE, PACKAGE_DIR, SEPARATOR};
-use package_manager::PkgError;
+use packaging::package_manager::{self, PkgError};
 use strum::IntoEnumIterator;
 use std::{env, fs, io::Write, path::Path, process, time};
-use utils::{Language, Searchable};
-// use utils:
-use valgrind::VgOutput;
+use utils::Language;
+use header_gen::lexer;
+use local_dev::{editors, dev_env_config};
+use testing::{safety, valgrind::VgOutput};
+
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -463,20 +461,20 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             let udts = lexer::get_udts(&tokens);
 
             // Ensure headerfiles don't include themselves
-            let includes = headers_gen::filter_out_includes(&includes, raw_name);
+            let includes = header_gen::filter_out_includes(&includes, raw_name);
 
             // Skip the first definition to skip the #ifndef NAME_H #define NAME_H 
             if defines_h.len() > 0 {
                 defines_h.remove(0);
             }
 
-            let res = headers_gen::merge_defines(&mut defines_h, &defines);
+            let res = header_gen::merge_defines(&mut defines_h, &defines);
             if let Err(e) = res {
                 eprintln!("Error: {}", e);
                 process::exit(1);
             }
             
-            let res = headers_gen::merge_udts(&mut udts_h, &udts);
+            let res = header_gen::merge_udts(&mut udts_h, &udts);
             if let Err(e) = res {
                 eprintln!("Error: {}", e);
                 process::exit(1);
@@ -526,7 +524,7 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
 
             let header_inc_path = format!("\"../include/{}\"", &header_name);
 
-            new_code = headers_gen::insert_self_include(new_code, &header_inc_path);
+            new_code = header_gen::insert_self_include(new_code, &header_inc_path);
 
             // let new_file = format!("{}.c.tmp", raw_name);
             let new_file = format!("{}.c", raw_name);

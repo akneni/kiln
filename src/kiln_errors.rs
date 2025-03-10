@@ -1,6 +1,6 @@
 
 #[derive(Debug, Clone)]
-pub(super) enum KilnErrType {
+pub enum KilnErrType {
     FileNotFound,
     TomlParseError,
     Anyhow,
@@ -8,7 +8,7 @@ pub(super) enum KilnErrType {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct KilnError {
+pub struct KilnError {
     err_type: KilnErrType,
     msg: String,
 }
@@ -17,7 +17,7 @@ pub type KilnResult<T> = Result<T, KilnError>;
 
 
 impl KilnError {
-    pub(super) fn new_unknown(msg: impl Into<String>) -> Self {
+    pub fn new_unknown(msg: impl Into<String>) -> Self {
         KilnError {
             err_type: KilnErrType::Unknown,
             msg: msg.into(),

@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::{Path, PathBuf}};
 use toml;
 
-use crate::{constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE, PACKAGE_DIR}, package_manager::{self, DepType}, utils};
-use crate::kiln_package::KilnPackageConfig;
+use crate::{constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE, PACKAGE_DIR}, package_manager, utils};
+use crate::packaging::kiln_package::KilnPackageConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -116,7 +116,7 @@ pub struct Project {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub(super) enum BuildType {
+pub enum BuildType {
     Exe,
     KilnPackage,
     StaticLibrary,
@@ -173,7 +173,7 @@ impl BuildOptions {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub(super) struct Dependency {
+pub struct Dependency {
     pub uri: String,
     pub version: String,
     pub include_dir: Option<String>,
@@ -183,7 +183,7 @@ pub(super) struct Dependency {
 }
 
 impl Dependency {
-    pub(super) fn new(owner: &str, repo_name: &str, version: &str) -> Self {
+    pub fn new(owner: &str, repo_name: &str, version: &str) -> Self {
         Dependency {
             uri: format!("https://github.com/{}/{}.git", owner, repo_name),
             version: version.to_string(),
@@ -191,17 +191,17 @@ impl Dependency {
         }
     }
 
-    pub(super) fn owner(&self) -> &str {
+    pub fn owner(&self) -> &str {
         let (owner, _repo) = package_manager::parse_github_uri(&self.uri).unwrap();
         owner
     }
 
-    pub(super) fn repo_name(&self) -> &str {
+    pub fn repo_name(&self) -> &str {
         let (_owner, repo) = package_manager::parse_github_uri(&self.uri).unwrap();
         repo
     }
 
-    pub(super) fn get_global_path(&self) -> PathBuf {
+    pub fn get_global_path(&self) -> PathBuf {
         let (owner, repo) = package_manager::parse_github_uri(&self.uri).unwrap();
 
         (*PACKAGE_DIR)
@@ -210,7 +210,7 @@ impl Dependency {
             .join(&self.version)
     }
 
-    pub(super) fn get_kiln_cfg(&self) -> Result<Option<Config>> {
+    pub fn get_kiln_cfg(&self) -> Result<Option<Config>> {
         let cfg_file = self.get_global_path().join(CONFIG_FILE);
         if !cfg_file.exists() {
             return Ok(None);
@@ -220,7 +220,7 @@ impl Dependency {
         Ok(Some(cfg))
     }
 
-    pub(super) fn get_include_dir(&self) -> Result<Option<PathBuf>> {
+    pub fn get_include_dir(&self) -> Result<Option<PathBuf>> {
         let p = self.get_global_path();
 
         if let Some(include_dir) = &self.include_dir {
@@ -242,7 +242,7 @@ impl Dependency {
         Ok(None)
     }
 
-    pub(super) fn get_source_dir(&self) -> Result<Option<PathBuf>> {
+    pub fn get_source_dir(&self) -> Result<Option<PathBuf>> {
         let p = self.get_global_path();
 
         if let Some(source_dir) = &self.source_dir {
@@ -264,34 +264,9 @@ impl Dependency {
         Ok(None)
     }
 
-    pub(super) fn get_shared_obj_dir(&self) -> Result<Option<PathBuf>> {
-        let p = self.get_global_path();
-        let so_path = Path::new("build").join("release");
-
-        let config_path = p.join(CONFIG_FILE);
-        if config_path.exists() {
-            return Ok(Some(p.join(so_path)));
-        }
-
-        Ok(None)
-    }
-
-    pub(super) fn get_static_lib_dir(&self) -> Result<Option<PathBuf>> {
-        let p = self.get_global_path();
-        let sl_path = Path::new("build").join("release");
-
-        let config_path = p.join(CONFIG_FILE);
-        if config_path.exists() {
-            return Ok(Some(p.join(sl_path)));
-        }
-
-        Ok(None)
-    }
-
-
     /// Adds a dependency if it doesn't already exist
     /// Returns true if the dependency already exists
-    pub(super) fn add_dependency(deps: &mut Vec<Dependency>, new_dep: Dependency) -> bool {
+    pub fn add_dependency(deps: &mut Vec<Dependency>, new_dep: Dependency) -> bool {
         for dep in deps.iter() {
             if *dep == new_dep {
                 return true;
@@ -300,16 +275,6 @@ impl Dependency {
         deps.push(new_dep);
         false
     }
-
-    fn get_dep_dir(&self, dep_type: DepType) -> Result<Option<PathBuf>> {
-        match dep_type {
-            DepType::SourceCode => self.get_source_dir(),
-            DepType::HeaderFile => self.get_include_dir(),
-            DepType::SharedObject => self.get_shared_obj_dir(),
-            DepType::StaticLibrary => self.get_static_lib_dir(),
-        }
-    }
-
 }
 
 /// Computes weak equality. Evaluates to true if the github uri has the same

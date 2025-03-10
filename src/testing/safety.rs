@@ -1,3 +1,6 @@
+use crate::{constants::VALGRIND_OUT, lexer, utils};
+use crate::testing::valgrind::VgOutput;
+
 use anyhow::{anyhow, Result};
 use std::{
     collections::HashMap,
@@ -8,7 +11,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{constants::VALGRIND_OUT, lexer, utils, valgrind::VgOutput};
+
 
 /// This checks if unsafe functions exist within a line using general string parsing
 /// This is messy and prone to false positives.

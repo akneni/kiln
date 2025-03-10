@@ -1,6 +1,7 @@
 use crate::config::{self, Dependency, Config};
 use crate::constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE};
-use crate::kiln_package::KilnPackageConfig;
+use crate::packaging::kiln_package::KilnPackageConfig;
+
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::io::Write;
@@ -49,14 +50,14 @@ pub enum PkgError {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct Tag {
+pub struct Tag {
     pub name: String, // The name of the tag is actually the version
     pub zipball_url: String,
     pub tarball_url: String,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(super) enum DepType {
+pub enum DepType {
     SourceCode,
     HeaderFile,
     SharedObject,
@@ -93,7 +94,7 @@ impl AsRef<Path> for DepType {
     }
 }
 
-pub(super) fn parse_github_uri(uri: &str) -> Result<(&str, &str), PkgError> {
+pub fn parse_github_uri(uri: &str) -> Result<(&str, &str), PkgError> {
     let mut uri = match uri.split_once("github.com/") {
         Some(s) => s.1,
         None => return Err(PkgError::UsrErr("Invalid GitHub uri".to_string())),
@@ -109,12 +110,6 @@ pub(super) fn parse_github_uri(uri: &str) -> Result<(&str, &str), PkgError> {
     };
 
     Ok((owner, proj_name))
-}
-
-pub(crate) fn uris_eq(uri1: &str, uri2: &str) -> Result<bool, PkgError> {
-    let (o1, r1) = parse_github_uri(uri1)?;
-    let (o2, r2) = parse_github_uri(uri2)?;
-    Ok(o1 == o2 && r1 == r2)
 }
 
 async fn find_tags(owner: &str, repo_name: &str) -> Result<Vec<Tag>, PkgError> {
@@ -204,7 +199,7 @@ async fn install_globally(package: &Dependency, tag: &Tag) -> Result<(), PkgErro
 /// Takes care of the entire installation process (High Level Function)
 /// PRECONDITION: CWD must be in the root directory of a kiln project
 /// This *will* take care of chained dependncies
-pub(super) async fn resolve_adding_package(
+pub async fn resolve_adding_package(
     config: &mut config::Config,
     owner: &str,
     proj_name: &str,
@@ -368,7 +363,7 @@ async fn add_package(
 /// Ensures that all the packages listed in the Kiln.toml config file are
 /// all installed globally. Any that are listed but are not installed will be 
 /// returned
-pub(super) fn check_pkgs<'a>(config: &'a Config) -> Vec<[String; 3]> {
+pub fn check_pkgs<'a>(config: &'a Config) -> Vec<[String; 3]> {
     let mut not_installed = vec![];
     let mut pkgs_visited: HashSet<String> = HashSet::new();
 

@@ -3,7 +3,7 @@ use strum_macros::EnumIter;
 
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, EnumIter)]
-pub(super) enum EditorType {
+pub enum EditorType {
     VsCode,
     NeoVim,
     Zed,
@@ -12,7 +12,7 @@ pub(super) enum EditorType {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) struct DevEnvConfig {
+pub struct DevEnvConfig {
     pub editor: Option<EditorType>,
 }
 

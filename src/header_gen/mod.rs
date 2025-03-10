@@ -1,12 +1,13 @@
+pub mod lexer;
+
 use std::collections::HashSet;
 
-use crate::lexer;
 use anyhow::{Result, anyhow};
 
 
 /// Returns an error if there are any duplicate definitions
 /// Otherwise, adds all definitions in `src` to `dst`
-pub(super) fn merge_defines<'a>(dst: &mut Vec<&'a [lexer::Token<'a>]>, src: &[&'a [lexer::Token<'a>]]) -> Result<()> {
+pub fn merge_defines<'a>(dst: &mut Vec<&'a [lexer::Token<'a>]>, src: &[&'a [lexer::Token<'a>]]) -> Result<()> {
     let mut dst_set = HashSet::new();
 
     for &tokens in dst.iter() {
@@ -28,7 +29,7 @@ pub(super) fn merge_defines<'a>(dst: &mut Vec<&'a [lexer::Token<'a>]>, src: &[&'
 
 /// Returns an error if there are any duplicate definitions
 /// Otherwise, adds all definitions in `src` to `dst`
-pub(super) fn merge_udts<'a>(dst: &mut Vec<&'a [lexer::Token<'a>]>, src: &[&'a [lexer::Token<'a>]]) -> Result<()> {
+pub fn merge_udts<'a>(dst: &mut Vec<&'a [lexer::Token<'a>]>, src: &[&'a [lexer::Token<'a>]]) -> Result<()> {
     let mut dst_set = HashSet::new();
 
     for &tokens in dst.iter() {
@@ -51,7 +52,7 @@ pub(super) fn merge_udts<'a>(dst: &mut Vec<&'a [lexer::Token<'a>]>, src: &[&'a [
 /// Expects raw source code and an include path (in the form `"../include/filename.h"`)
 /// This will do nothing and return `code` if the include statement already exists, otherwise
 /// it will insert it at the end of all the include statements
-pub(super) fn insert_self_include(code: String, include: &str) -> String {
+pub fn insert_self_include(code: String, include: &str) -> String {
     let mut code_lines: Vec<&str> = code.lines().collect();
 
     let contains_include = code_lines.iter().any(|&line| {
@@ -85,7 +86,7 @@ pub(super) fn insert_self_include(code: String, include: &str) -> String {
 
 
 /// Filters out `#include "XXX.h"` where `file_name` is `"XXX"`
-pub(super) fn filter_out_includes<'a>(includes: &Vec<&'a [lexer::Token]>, file_name: &str) -> Vec<&'a [lexer::Token<'a>]> {
+pub fn filter_out_includes<'a>(includes: &Vec<&'a [lexer::Token]>, file_name: &str) -> Vec<&'a [lexer::Token<'a>]> {
     let include_str_name = [
         format!("{}.h\"", file_name),
         format!("/{}.h\"", file_name),

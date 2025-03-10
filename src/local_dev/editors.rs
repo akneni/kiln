@@ -1,12 +1,12 @@
-use std::{fs, path::Path};
+use crate::{config::Config, constants::DEV_ENV_CFG_FILE, local_dev::dev_env_config::{DevEnvConfig, EditorType}, kiln_errors::{KilnError, KilnResult}};
 
+use std::{fs, path::Path};
 use serde_json::Value;
 use serde_yaml::{Mapping, Value as YmlValue};
 
 
-use crate::{config::Config, constants::DEV_ENV_CFG_FILE, dev_env_config::{DevEnvConfig, EditorType}, kiln_errors::{KilnError, KilnResult}};
 
-pub(super) fn handle_editor_includes(config: &Config, proj_dir: impl AsRef<Path>) -> KilnResult<()> {
+pub fn handle_editor_includes(config: &Config, proj_dir: impl AsRef<Path>) -> KilnResult<()> {
     let local_dev_file = proj_dir.as_ref().join(DEV_ENV_CFG_FILE);
 
     if !local_dev_file.exists() {
@@ -62,7 +62,7 @@ fn set_include(dev_config: &DevEnvConfig, includes: &[String], proj_dir: impl As
 
 /// Updates the `.vscode/c_cpp_properties.json` file to include the propor include paths
 fn set_include_vscode(includes: &[String], proj_dir: impl AsRef<Path>) {
-    let default_config = include_str!("../assets/vscode-default-properties.json");
+    let default_config = include_str!("../../assets/vscode-default-properties.json");
     let dc_json: Value = serde_json::from_str(default_config).unwrap();
 
     let default_include = "${workspaceFolder}/include/**";

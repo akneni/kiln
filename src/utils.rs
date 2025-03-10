@@ -169,7 +169,7 @@ pub fn print_warning(
     println!("{}\n", err_msg);
 }
 
-pub(super) fn join_rel_path(abs_path: impl AsRef<Path>, rel_path: &str) -> PathBuf {
+pub fn join_rel_path(abs_path: impl AsRef<Path>, rel_path: &str) -> PathBuf {
     let path = abs_path.as_ref();
     match rel_path {
         "" | "." | "./" => path.to_path_buf(),
@@ -177,18 +177,3 @@ pub(super) fn join_rel_path(abs_path: impl AsRef<Path>, rel_path: &str) -> PathB
     }
 }
 
-
-pub(super) trait Searchable<T> {
-    fn index_of(&self, target: &T) -> Option<usize>;
-}
-
-impl<T: Eq> Searchable<T> for Vec<T> {
-    fn index_of(&self, target: &T) -> Option<usize> {
-        for (i, element) in self.iter().enumerate() {
-            if target == element {
-                return Some(i);
-            }
-        }
-        None
-    }
-}

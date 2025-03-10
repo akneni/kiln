@@ -108,7 +108,7 @@ pub fn link_sys_lib(path: &Path) -> Vec<String> {
     libs
 }
 
-pub(super) fn link_dep_files(
+pub fn link_dep_files(
     config: &Config,
     language: Language,
     out_buffer: &mut Vec<String>,
@@ -131,7 +131,7 @@ pub(super) fn link_dep_files(
     Ok(())
 }
 
-pub(super) fn link_dep_headers(config: &Config) -> Result<Vec<String>> {
+pub fn link_dep_headers(config: &Config) -> Result<Vec<String>> {
     let mut header_dirs = vec![];
 
     let mut packages: HashSet<String> = HashSet::new();
@@ -145,7 +145,7 @@ pub(super) fn link_dep_headers(config: &Config) -> Result<Vec<String>> {
     Ok(header_dirs)
 }
 
-pub(super) fn link_dep_shared_obj(proj_dir: &Path) -> Result<Option<String>> {
+pub fn link_dep_shared_obj(proj_dir: &Path) -> Result<Option<String>> {
     let headers_dir = proj_dir.join("dependencies").join("shared_objects");
     if !headers_dir.exists() {
         return Ok(None);
@@ -416,7 +416,7 @@ fn link_dep_headers_h(
     Ok(())
 }
 
-pub(super) fn validate_build_dir() -> Result<()> {
+pub fn validate_build_dir() -> Result<()> {
     let a = Path::new("build/release");
     let b = Path::new("build/debug");
 

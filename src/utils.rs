@@ -176,3 +176,19 @@ pub(super) fn join_rel_path(abs_path: impl AsRef<Path>, rel_path: &str) -> PathB
         _ => path.join(rel_path)
     }
 }
+
+
+pub(super) trait Searchable<T> {
+    fn index_of(&self, target: &T) -> Option<usize>;
+}
+
+impl<T: Eq> Searchable<T> for Vec<T> {
+    fn index_of(&self, target: &T) -> Option<usize> {
+        for (i, element) in self.iter().enumerate() {
+            if target == element {
+                return Some(i);
+            }
+        }
+        None
+    }
+}

@@ -20,7 +20,8 @@ use constants::{CONFIG_FILE, DEV_ENV_CFG_FILE, PACKAGE_DIR, SEPARATOR};
 use package_manager::PkgError;
 use strum::IntoEnumIterator;
 use std::{env, fs, io::Write, path::Path, process, time};
-use utils::Language;
+use utils::{Language, Searchable};
+// use utils:
 use valgrind::VgOutput;
 
 #[tokio::main(flavor = "current_thread")]
@@ -157,9 +158,12 @@ async fn main() {
                 eprintln!("An error occurred during static analysis:\n{}", e);
                 process::exit(1);
             }
-            if let Err(e) = handle_build(&profile, &config) {
-                eprintln!("An error occurred while building the project:\n{}", e);
-                process::exit(1);
+
+            for &b_type in config.project.build_type.iter() {
+                if let Err(e) = handle_build(&profile, &config, b_type) {
+                    eprintln!("An error occurred while building the project (build mode {:?}):\n{}", b_type, e);
+                    process::exit(1);
+                }
             }
         }
         cli::Commands::Run {
@@ -171,14 +175,20 @@ async fn main() {
                 println!("{}", e);
                 process::exit(1);
             }
+
             let config = config.unwrap();
+            if !config.project.build_type.contains(&config::BuildType::Exe) {
+                eprintln!("Cannot run a non executable project");
+                process::exit(1);
+            }
+
             handle_check_installs(&config).await;
 
             if let Err(e) = handle_warnings(&config) {
                 eprintln!("An error occurred during static analysis:\n{}", e);
                 process::exit(1);
             }
-            if let Err(e) = handle_build(&profile, &config) {
+            if let Err(e) = handle_build(&profile, &config, config::BuildType::Exe) {
                 eprintln!("An error occurred while building the project:\n{}", e);
                 process::exit(1);
             }
@@ -305,11 +315,13 @@ fn handle_warnings(config: &Config) -> Result<Vec<safety::Warning>> {
     Ok(warnings)
 }
 
-fn handle_build(profile: &str, config: &Config) -> Result<()> {
+fn handle_build(profile: &str, config: &Config, build_type: config::BuildType) -> Result<()> {
     if !profile.starts_with("--") {
         eprintln!("Error: profile must start with `--`");
         process::exit(1);
     }
+    build_sys::validate_build_dir()?;
+
     let cwd = env::current_dir().unwrap();
 
     let build_dir = cwd.join("build").join(&profile[2..]);
@@ -337,18 +349,39 @@ fn handle_build(profile: &str, config: &Config) -> Result<()> {
         &header_dirs,
         &so_dir,
         &opt_flags,
+        build_type,
     )?;
 
-    #[cfg(debug_assertions)]
+    #[cfg(debug_assertions)] 
     {
         println!("{}\n\n", compilation_cmd.join(" "));
     }
 
-    let child = process::Command::new(&compilation_cmd[0])
-        .args(&compilation_cmd[1..])
+    let build_dir = match build_type {
+        config::BuildType::StaticLibrary => {
+            env::current_dir().unwrap()
+                .join("build")
+                .join(&profile[2..])
+                .join("obj")
+        }
+        _ => env::current_dir().unwrap(),
+    };
+
+
+    let command = compilation_cmd.join(" ");
+    let (shell, flag) = if cfg!(target_os = "windows") {
+        ("cmd", "/C")
+    } else {
+        ("sh", "-c")
+    };
+
+    let child = process::Command::new(shell)
+        .arg(flag)
+        .arg(&command)
         .stdout(process::Stdio::inherit())
         .stderr(process::Stdio::inherit())
         .stdin(process::Stdio::inherit())
+        .current_dir(&build_dir)
         .output()?;
 
     if !child.status.success() {

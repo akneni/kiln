@@ -1,10 +1,11 @@
-use crate::config::Dependency;
+use crate::config::{self, Dependency};
 use crate::utils;
 use crate::utils::Language;
 use crate::{config::Config, constants::CONFIG_FILE};
 
 use anyhow::{anyhow, Result};
 use std::collections::{HashMap, HashSet};
+use std::{env, process};
 use std::{fs, path::Path};
 
 pub fn create_project(path: &Path, lang: Language) -> Result<()> {
@@ -165,6 +166,8 @@ pub fn opt_flags(profile: &str, config: &Config) -> Result<Vec<String>> {
     ))
 }
 
+/// if `build_type` is `BuildType::StaticLibrary`, then we will need to run the build command in the
+/// `build/XXX/obj` directory
 pub fn full_compilation_cmd(
     config: &Config,
     profile: &str,
@@ -173,6 +176,7 @@ pub fn full_compilation_cmd(
     header_dirs: &Vec<String>,
     shared_obj_dir: &Option<String>,
     flags: &Vec<String>,
+    build_type: config::BuildType,
 ) -> Result<Vec<String>> {
     let compiler = config.get_compiler_path();
     let standard = config.get_standard();
@@ -184,10 +188,39 @@ pub fn full_compilation_cmd(
 
     command.extend_from_slice(flags);
 
-    let profile = &profile[2..];
-    let build_path = format!("build/{}/{}", profile, &config.project.name);
+    let cwd = env::current_dir()?;
+    let cwd = cwd.as_os_str();
+    let cwd = cwd.to_str().unwrap();
 
-    command.extend_from_slice(&["-o".to_string(), build_path]);
+    let profile = &profile[2..];
+    let mut build_path = format!("{}/build/{}/{}", cwd, profile, &config.project.name);
+    
+    match build_type {
+        config::BuildType::DynamicLibrary => {
+            let file_ext = match env::consts::OS {
+                "linux" => ".so",
+                "windows" => ".dll",
+                "mac" => ".dylib",
+                _ => {
+                    eprintln!("OS {} not supported", env::consts::OS);
+                    process::exit(1);
+                }
+            };
+            build_path.push_str(file_ext);
+
+            command.extend_from_slice(&["-shared".to_string(), "-fPIC".to_string()]);
+        }
+        config::BuildType::StaticLibrary => {   
+            command.push("-c".to_string());
+            
+            let _ = fs::create_dir_all(&build_path);
+        }
+        _ => {}
+    }
+
+    if build_type != config::BuildType::StaticLibrary {
+        command.extend_from_slice(&["-o".to_string(), build_path]);
+    }
 
     for header_dir in header_dirs {
         let tmp: String = format!("-I{}", header_dir);
@@ -209,6 +242,21 @@ pub fn full_compilation_cmd(
 
     // Link all the libraries (shared objects like -lm, -lpthread, etc)
     command.extend_from_slice(link_lib);
+
+    if build_type == config::BuildType::StaticLibrary {
+        let output_file = format!("{}/build/{}/{}.a", cwd, profile, &config.project.name);
+        let object_dir = format!("{}/build/{}/obj/*.o", cwd, profile);
+
+        let second_cmd = [
+            "&&".to_string(),
+            "ar".to_string(),
+            "rcs".to_string(),
+            output_file,
+            object_dir,
+        ];
+
+        command.extend_from_slice(&second_cmd);
+    }
 
     Ok(command)
 }
@@ -237,6 +285,7 @@ pub fn validate_proj_repo(path: &Path) -> Result<()> {
             "Invalid Project Directory: `src` is not a directory."
         ));
     }
+
     Ok(())
 }
 
@@ -362,6 +411,20 @@ fn link_dep_headers_h(
                 link_dep_headers_h(cd, out_buffer, packages)?;
             }
         }
+    }
+
+    Ok(())
+}
+
+pub(super) fn validate_build_dir() -> Result<()> {
+    let a = Path::new("build/release");
+    let b = Path::new("build/debug");
+
+    if !a.exists() {
+        fs::create_dir_all(a)?;
+    }
+    if !b.exists() {
+        fs::create_dir_all(b)?;
     }
 
     Ok(())

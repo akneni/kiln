@@ -19,6 +19,7 @@ impl Config {
             name: proj_name.to_string(),
             version: "0.0.1".to_string(),
             language: "c".to_string(),
+            build_type: vec![BuildType::Exe]
         };
 
         // No posibility of this failing
@@ -35,6 +36,17 @@ impl Config {
         let toml_str = fs::read_to_string(path)?;
 
         let config: Config = toml::from_str(&toml_str)?;
+
+
+        let build_types = &config.project.build_type;
+
+        if build_types.len() == 0 {
+            return Err(anyhow!("Project must have a build type"));
+        }
+        if build_types.contains(&BuildType::Exe) && build_types.len() > 1 {
+            return Err(anyhow!("Project cannot be executable in addition to other types"));
+        } 
+
 
         Ok(config)
     }
@@ -100,6 +112,15 @@ pub struct Project {
     pub name: String,
     pub version: String,
     pub language: String,
+    pub build_type: Vec<BuildType>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) enum BuildType {
+    Exe,
+    KilnPackage,
+    StaticLibrary,
+    DynamicLibrary,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -596,6 +596,7 @@ async fn handle_check_installs(config: &Config) {
             .unwrap();
     }
 
+    #[cfg(debug_assertions)]
     dbg!(timer.elapsed());
 }
 

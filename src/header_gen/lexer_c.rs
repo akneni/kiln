@@ -46,7 +46,7 @@ impl<'a> Token<'a> {
         for &t in tokens.iter() {
             if let Token::Object(s) = t {
                 string.push_str(s);
-            } 
+            }
             else if let Token::Literal(s) = t {
                 string.push_str(s);
             }
@@ -65,52 +65,6 @@ impl<'a> Token<'a> {
         }
         string
     }
-}
-
-
-pub fn tokenize_unclean(code: &str) -> Result<(Vec<Token>, Vec<usize>)> {
-    let code_bytes = code.as_bytes();
-    let mut tokens = Vec::with_capacity(4096);
-    let mut byte_idx = Vec::with_capacity(4096);
-
-    let mut idx: usize = 0;
-    while idx < code.len() {
-        if code[idx..].starts_with("//") {
-            idx += code[idx..].find('\n').unwrap_or(code.len()) + 1;
-            continue;
-        } else if code[idx..].starts_with("/*") {
-            idx += code[idx..].find("*/").unwrap_or(code.len()) + 2;
-            continue;
-        }
-
-        if code_bytes[idx] == ' ' as u8 || code_bytes[idx] == '\t' as u8 {
-            idx += 1;
-            continue;
-        }
-        if let Some(sym) = is_symbol(&code[idx..]) {
-            tokens.push(sym);
-            byte_idx.push(idx);
-            idx += 1;
-            continue;
-        }
-        if code_bytes[idx] == '"' as u8 {
-            let len = find_len_string_literal(&code_bytes[idx..])?;
-            let val = &code[idx..(idx + len)];
-            let tok = Token::Literal(val);
-            tokens.push(tok);
-            byte_idx.push(idx);
-            idx += len;
-            continue;
-        }
-        let new_idx = find_len_object(code_bytes, idx);
-        let val = &code[idx..new_idx];
-        let tok = Token::Object(val);
-        tokens.push(tok);
-        byte_idx.push(idx);
-        idx = new_idx;
-    }
-
-    Ok((tokens, byte_idx))
 }
 
 pub fn tokenize(code: &str) -> Result<Vec<Token>> {
@@ -246,85 +200,36 @@ fn find_len_comment(code_bytes: &[u8]) -> usize {
     idx
 }
 
-/// Gets the ranges (as [start, end] byte offsets) from the `byte_idx` vector to keep,
-/// excluding the token slices in `exclude_tokens`.
-///
-/// Both `tokens` and `byte_idx` are assumed to be parallel; i.e. the ith element of `byte_idx`
-/// gives the starting offset of the ith token in `tokens`. In an ideal setup, `byte_idx` would have
-/// one extra element (the file length) to mark the end of the last token.
-pub fn get_inclusion_ranges(
-    tokens: &Vec<Token>,
-    byte_idx: &Vec<usize>,
-    exclude_tokens: &[&[Token]],
-) -> Vec<[usize; 2]> {
-    let mut inclusion_ranges = Vec::new();
-    // current_inclusion_start marks the index (in tokens) where the current “keep” region began.
-    let mut current_inclusion_start: usize = 0;
-    let mut i = 0;
 
-    while i < tokens.len() {
-        let mut matched_exclusion = None;
-        // See if any of the exclusion slices match starting at token index i.
-        for &excl in exclude_tokens {
-            if excl.is_empty() {
-                continue;
-            }
-            // If there are enough tokens left and the slice matches...
-            if i + excl.len() <= tokens.len() && &tokens[i..(i + excl.len())] == excl {
-                matched_exclusion = Some(excl.len());
-                break;
-            }
+/// Reconstructs the soruce code excluding the ranges specified 
+pub fn reconstruct_source(tokens: &[Token], exclude_ranges: &[&[Token]]) -> String {
+    let mut new_tokens = vec![];
+
+    let mut er_idx = 0;
+    let mut idx = 0;
+    
+    while idx < tokens.len() {
+        let mut len = 0;
+        let mut is_exlcude_range = false;
+        
+        if er_idx < exclude_ranges.len() {
+            len = exclude_ranges[er_idx].len();
+            is_exlcude_range = er_idx < exclude_ranges.len() &&
+                (idx+len) <= tokens.len() &&
+                &tokens[idx..(idx+len)] == exclude_ranges[er_idx];
         }
 
-        if let Some(skip_len) = matched_exclusion {
-            // End the current inclusion region (if nonempty) at the beginning of the exclusion.
-            if current_inclusion_start < i {
-                inclusion_ranges.push([byte_idx[current_inclusion_start], byte_idx[i]]);
-            }
-            // Skip over the excluded tokens.
-            i += skip_len;
-            current_inclusion_start = i;
-        } else {
-            // No exclusion match here; move on.
-            i += 1;
+        if is_exlcude_range {
+            er_idx += 1;
+            idx += len;
+        }
+        else {
+            new_tokens.push(tokens[idx]);
+            idx += 1;
         }
     }
 
-    // If there is any trailing inclusion region after the last exclusion, add it.
-    if current_inclusion_start < tokens.len() {
-        // For the end offset, we try to use the next byte offset if available.
-        // (Ideally, byte_idx has length tokens.len() + 1.)
-        let end = if tokens.len() < byte_idx.len() {
-            byte_idx[tokens.len()]
-        } else {
-            // Fallback: use the last token's start offset.
-            *byte_idx.last().unwrap()
-        };
-        inclusion_ranges.push([byte_idx[current_inclusion_start], end]);
-    }
-
-    inclusion_ranges
-}
-
-pub fn merge_inclusion_ranges(code: &str, inclusion_ranges: &Vec<[usize; 2]>) -> String {
-    let mut new_code = "".to_string();
-    if inclusion_ranges.len() == 0 {
-        return new_code;
-    }
-
-    for range in inclusion_ranges[..inclusion_ranges.len() - 1].iter() {
-        new_code.push_str(&code[range[0]..range[1]]);
-    }
-
-    if let Some(&r) = inclusion_ranges.last() {
-        let mut r = r;
-        if r[1] == code.len() - 1 {
-            r[1] += 1;
-        }
-        new_code.push_str(&code[r[0]..r[1]]);
-    }
-
-    new_code
+    Token::tokens_to_string(&new_tokens)
 }
 
 // Maps character's ascii codes to their token

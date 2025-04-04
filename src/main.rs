@@ -21,34 +21,8 @@ use strum::IntoEnumIterator;
 use testing::{safety, valgrind::VgOutput};
 use utils::Language;
 
-fn tmp() {
-    let text = fs::read_to_string("tests/lexer-UDT.c").unwrap();
-
-    let tokens = lexer_c::tokenize(&text).unwrap();
-
-
-    let reconstructed_text = lexer_c::Token::tokens_to_string(&tokens);
-
-    let mut temp = "".to_string();
-    for t in tokens {
-        temp.push_str(&format!("{:?}\n", t));
-    }
-
-    fs::write("temp.txt", temp).unwrap();
-
-    println!("text len: {}", text.len());
-    println!("reconstructed_text len: {}", reconstructed_text.len());
-
-    assert_eq!(text, reconstructed_text);
-
-
-    std::process::exit(0);
-}
-
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    tmp();
-
     let cli_args: cli::CliCommand;
     let raw_cli_args = std::env::args().collect::<Vec<String>>();
     if raw_cli_args.len() < 2 {
@@ -509,10 +483,10 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             let header_name = format!("{}.h", raw_name);
 
             let code = fs::read_to_string(file.path())?;
-            let (tokens, byte_idx) = lexer_c::tokenize_unclean(&code)?;
+            let tokens = lexer_c::tokenize(&code)?;
 
             let code_h = fs::read_to_string(inc_dir.join(&header_name)).unwrap_or("".to_string());
-            let (tokens_h, _) = lexer_c::tokenize_unclean(&code_h)?;
+            let tokens_h = lexer_c::tokenize(&code_h)?;
 
             let mut defines_h = lexer_c::get_defines(&tokens_h);
             let mut udts_h = lexer_c::get_udts(&tokens_h);
@@ -549,7 +523,7 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
 
             for &inc in &includes {
                 let s = lexer_c::Token::tokens_to_string(inc);
-                headers.push_str(&s);
+                headers.push_str(s.trim());
                 headers.push('\n');
             }
             headers.push('\n');
@@ -574,7 +548,7 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
                 }
 
                 let s = lexer_c::Token::tokens_to_string(func);
-                headers.push_str(&s);
+                headers.push_str(s.trim());
                 headers.push_str(";\n");
             }
             headers.push('\n');
@@ -586,8 +560,7 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             let mut exclude_tokens = udts;
             exclude_tokens.extend_from_slice(&defines);
 
-            let inclusion_ranges = lexer_c::get_inclusion_ranges(&tokens, &byte_idx, &exclude_tokens);
-            let mut new_code = lexer_c::merge_inclusion_ranges(&code, &inclusion_ranges);
+            let mut new_code = lexer_c::reconstruct_source(&tokens, &exclude_tokens);
 
             let header_inc_path = format!("\"../include/{}\"", &header_name);
 

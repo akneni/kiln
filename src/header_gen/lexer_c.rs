@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 pub enum Token<'a> {
     Object(&'a str),
     Literal(&'a str),
+    Comment(&'a str),
     HashTag,
     GreaterThan,
     LessThan,
@@ -34,41 +35,25 @@ pub enum Token<'a> {
     Tick,
     QuestionMark,
     NewLine,
-}
-
-#[inline]
-fn is_udt_kwargs(token: &Token) -> bool {
-    match token {
-        Token::Object("struct") | Token::Object("enum") | Token::Object("union") => true,
-        _ => false,
-    }
+    Space,
+    Tab,
 }
 
 impl<'a> Token<'a> {
     pub fn tokens_to_string(tokens: &[Token]) -> String {
-        if tokens.len() >= 2 && (is_udt_kwargs(&tokens[0]) || is_udt_kwargs(&tokens[1])) {
-            return Self::udt_tokens_to_string(tokens);
-        }
-
-        let space_after = [Token::Comma, Token::Asterisk];
         let mut string = String::new();
 
-        for (i, &t) in tokens.iter().enumerate() {
+        for &t in tokens.iter() {
             if let Token::Object(s) = t {
-                if i != 0 {
-                    if let Token::Object(_) = tokens[i - 1] {
-                        string.push(' ');
-                    } else if space_after.contains(&tokens[i - 1]) {
-                        string.push(' ');
-                    }
-                }
                 string.push_str(s);
-                if s == "include" {
-                    string.push(' ');
-                }
-            } else if let Token::Literal(s) = t {
+            } 
+            else if let Token::Literal(s) = t {
                 string.push_str(s);
-            } else {
+            }
+            else if let Token::Comment(c) = t {
+                string.push_str(c);
+            } 
+            else {
                 for i in 0..TOKEN_MAPPING.len() {
                     if let Some(c) = TOKEN_MAPPING[i] {
                         if c == t {
@@ -80,123 +65,8 @@ impl<'a> Token<'a> {
         }
         string
     }
-
-    fn udt_tokens_to_string(tokens: &[Token]) -> String {
-        let mut output = String::new();
-        let mut indent_level = 0;
-        let mut start_of_line = true;
-
-        for (i, token) in tokens.iter().enumerate() {
-            // At the beginning of a new line, insert indentation based on the current indent_level.
-            if start_of_line {
-                output.push_str(&"    ".repeat(indent_level));
-                start_of_line = false;
-            }
-
-            match token {
-                Token::Object(s) => {
-                    if i > 0 && !output.ends_with('\n') {
-                        // Add a space if the previous token is one of these.
-                        match tokens[i - 1] {
-                            Token::Object(_)
-                            | Token::Literal(_)
-                            | Token::CloseCurlyBrace
-                            | Token::Asterisk => {
-                                output.push(' ');
-                            }
-                            _ => {}
-                        }
-                    }
-                    output.push_str(s);
-                }
-                Token::Literal(s) => {
-                    output.push_str(s);
-                }
-                Token::OpenCurlyBrace => {
-                    // Keep the '{' on the same line as the header.
-                    output.push_str(" {");
-                    output.push('\n');
-                    indent_level += 1; // Increase indent level for the struct body.
-                    start_of_line = true;
-                }
-                Token::CloseCurlyBrace => {
-                    // Ensure the '}' starts on a new line.
-                    if !output.ends_with('\n') {
-                        output.push('\n');
-                    }
-                    indent_level = indent_level.saturating_sub(1); // Decrease indent level.
-                    output.push_str(&"    ".repeat(indent_level));
-                    output.push('}');
-                }
-                Token::Semicolon => {
-                    output.push(';');
-                    if !output.ends_with('\n') {
-                        output.push('\n');
-                    }
-                    start_of_line = true;
-                }
-                Token::NewLine => {
-                    if !output.ends_with('\n') {
-                        output.push('\n');
-                    }
-                    start_of_line = true;
-                }
-                _ => {
-                    // For any other token, convert it via TOKEN_MAPPING.
-                    for j in 0..TOKEN_MAPPING.len() {
-                        if let Some(c) = TOKEN_MAPPING[j] {
-                            if c == *token {
-                                output.push((j as u8) as char);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Post-process the output to remove any blank lines (lines that contain only whitespace).
-        let cleaned = output
-            .split("\n")
-            .filter(|line| !line.trim().is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        cleaned
-    }
 }
 
-pub fn tokenize(code: &str) -> Result<Vec<Token>> {
-    let code_bytes = code.as_bytes();
-    let mut tokens = Vec::with_capacity(4096);
-
-    let mut idx: usize = 0;
-    while idx < code.len() {
-        if code_bytes[idx] == ' ' as u8 || code_bytes[idx] == '\t' as u8 {
-            idx += 1;
-            continue;
-        }
-        if let Some(sym) = is_symbol(&code[idx..]) {
-            tokens.push(sym);
-            idx += 1;
-            continue;
-        }
-        if code_bytes[idx] == '"' as u8 {
-            let len = find_len_string_literal(&code_bytes[idx..])?;
-            let val = &code[idx..(idx + len)];
-            let tok = Token::Literal(val);
-            tokens.push(tok);
-            idx += len;
-            continue;
-        }
-        let new_idx = find_len_object(code_bytes, idx);
-        let val = &code[idx..new_idx];
-        let tok = Token::Object(val);
-        tokens.push(tok);
-        idx = new_idx;
-    }
-
-    Ok(tokens)
-}
 
 pub fn tokenize_unclean(code: &str) -> Result<(Vec<Token>, Vec<usize>)> {
     let code_bytes = code.as_bytes();
@@ -243,6 +113,64 @@ pub fn tokenize_unclean(code: &str) -> Result<(Vec<Token>, Vec<usize>)> {
     Ok((tokens, byte_idx))
 }
 
+pub fn tokenize(code: &str) -> Result<Vec<Token>> {
+    let code_bytes = code.as_bytes();
+    let mut tokens = Vec::with_capacity(4096);
+
+    let mut idx: usize = 0;
+    while idx < code.len() {
+        match code_bytes[idx] as char {
+            ' ' => {
+                tokens.push(Token::Space);
+                idx += 1;
+                continue;
+            }
+            '\t' => {
+                tokens.push(Token::Tab);
+                idx += 1;
+                continue;
+            }
+            '\n' => {
+                tokens.push(Token::NewLine);
+                idx += 1;
+                continue;
+            }
+            '"' => {
+                let len = find_len_string_literal(&code_bytes[idx..])?;
+                let val = &code[idx..(idx + len)];
+                let tok = Token::Literal(val);
+                tokens.push(tok);
+                idx += len;
+                continue;
+            }
+            '/' => {
+                if matches!(code_bytes[idx+1] as char, '*' | '/') {
+                    let len = find_len_comment(&code_bytes[idx..]);
+                    let val = &code[idx..(idx + len)];
+                    let tok = Token::Comment(val);
+                    tokens.push(tok);
+                    idx += len;
+                    continue;
+                }
+            }
+            _ => {}
+        }
+
+        if let Some(sym) = is_symbol(&code[idx..]) {
+            tokens.push(sym);
+            idx += 1;
+            continue;
+        }
+        let new_idx = find_len_object(code_bytes, idx);
+        let val = &code[idx..new_idx];
+        let tok = Token::Object(val);
+        tokens.push(tok);
+        idx = new_idx;
+    }
+
+    Ok(tokens)
+}
+
 #[inline]
 fn is_symbol(code: &str) -> Option<Token> {
     let char = code.chars().next();
@@ -270,6 +198,7 @@ fn find_len_object(code_bytes: &[u8], mut curr_idx: usize) -> usize {
     return curr_idx;
 }
 
+/// `code_bytes` must be a slice such that the start of the slice is the same as the start of the string (first character must be a `"`)
 fn find_len_string_literal(code_bytes: &[u8]) -> Result<usize> {
     let mut idx: usize = 1;
     while idx < code_bytes.len() {
@@ -285,6 +214,36 @@ fn find_len_string_literal(code_bytes: &[u8]) -> Result<usize> {
         idx += 1;
     }
     Err(anyhow!("String literal not closed"))
+}
+
+/// `code_bytes` must be a slice such that the start of the slice is the same as the start of the comment (first characters must be `//` or `/*`)
+fn find_len_comment(code_bytes: &[u8]) -> usize {
+    #[cfg(debug_assertions)] {
+        if code_bytes[0] != '/' as u8 || !(matches!(code_bytes[1] as char, '*' | '/')){
+            panic!("Not a comment");
+        }    
+    }
+
+    let mut idx = 2;
+    match code_bytes[1] as char {
+        '*' => {
+            while idx < code_bytes.len() {
+                if code_bytes[idx] == '*' as u8 && code_bytes[idx+1] == '/' as u8 {
+                    idx += 2;
+                    break;
+                }
+                idx += 1;
+            }
+        }
+        '/' => {
+            while idx < code_bytes.len() && code_bytes[idx] != '\n' as u8 {
+                idx += 1;
+            }
+        }
+        _ => unsafe { std::hint::unreachable_unchecked() },
+    }
+
+    idx
 }
 
 /// Gets the ranges (as [start, end] byte offsets) from the `byte_idx` vector to keep,
@@ -379,7 +338,7 @@ const TOKEN_MAPPING: [Option<Token>; 128] = [
     None,
     None,
     None,
-    None,
+    Some(Token::Tab),
     Some(Token::NewLine),
     None,
     None,
@@ -402,7 +361,7 @@ const TOKEN_MAPPING: [Option<Token>; 128] = [
     None,
     None,
     None,
-    None,
+    Some(Token::Space),
     Some(Token::Exclamation),
     None,
     Some(Token::HashTag),
@@ -595,49 +554,61 @@ pub fn get_udts<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
         return udts;
     }
 
-    let udt_kwargs = ["struct", "enum", "union"];
-
     let mut idx: usize = 0;
     while idx < tokens.len() - 2 {
         if let Token::Object(obj) = tokens[idx] {
-            if !["typedef", "struct", "union", "enum"].contains(&obj) {
+            if !matches!(obj, "typedef" | "struct" | "union" | "enum") {
                 idx += 1;
                 continue;
-            } else if "typedef" == obj {
-                let obj_2 = if let Token::Object(obj_2) = tokens[idx + 1] {
-                    obj_2
-                } else {
-                    "-"
-                };
-                if !udt_kwargs.contains(&obj_2) {
-                    idx += 1;
-                    continue;
+            } 
+
+            let next_idx = if obj == "typedef" {
+                let x = idx + next_non_whitespace_token(&tokens[idx..]);
+                if x >= tokens.len() {
+                    unreachable!();
                 }
+                x
             }
-            let length = match udt_len(&tokens[idx..]) {
-                Some(l) => l,
-                None => {
-                    idx += 1;
-                    continue;
-                }
+            else {
+                idx
             };
 
-            let end = idx + length + 1;
-            if tokens[end - 1] != Token::Semicolon {
-                idx += 1;
-                continue;
-            }
-            if tokens[end - 2] != Token::CloseCurlyBrace
-                && std::mem::discriminant(&tokens[end - 2])
-                    != std::mem::discriminant(&Token::Object("_"))
-            {
-                idx += 1;
-                continue;
-            }
+            match tokens[next_idx] {
+                Token::Object("struct") |
+                Token::Object("enum") |
+                Token::Object("union") => {
+                    let start_idx = idx;
+                    idx = next_idx;
+                    let mut curlybrace_stack = 0;
 
-            udts.push(&tokens[idx..end]);
-            idx = end - 1;
-        } else {
+                    while idx < tokens.len() {
+                        match tokens[idx] {
+                            Token::OpenCurlyBrace => curlybrace_stack += 1,
+                            Token::CloseCurlyBrace => {
+                                if curlybrace_stack == 0 {
+                                    unreachable!();
+                                }
+
+                                curlybrace_stack -= 1;
+                            }
+                            Token::Semicolon => {
+                                if curlybrace_stack == 0 {
+                                    let x = &tokens[start_idx..=idx];
+                                    udts.push(x);
+                                    break;
+                                }
+                            }
+                            _ => {},
+                        }
+                        idx += 1;
+                    }
+                }
+                _ => {
+                    idx = next_idx;
+                }
+            }
+        }
+        else {
             idx += 1;
         }
     }
@@ -681,84 +652,81 @@ pub fn get_udt_name<'a>(tokens: &'a [Token]) -> &'a str {
         unreachable!("Token string is not a valid user defined type definition");
     }
 
-    match &tokens[0] {
-        // Handle typedef struct definitions
-        Token::Object("typedef") => {
-            // Ensure we are dealing with a typedef for a struct.
-            // Typical patterns:
-            //   typedef struct { ... } Alias;
-            //   typedef struct Tag { ... } Alias;
-            //
-            // In both cases, the actual name (Alias) is the last Object token before the semicolon.
-            let semicolon_index = tokens
-                .iter()
-                .rposition(|t| *t == Token::Semicolon)
-                .expect("Missing semicolon in user defined type definition");
+    let mut idx = 0;
+    let mut num_unclosed_braces = 0;
+    
+    while idx < tokens.len() {
+        match tokens[idx] {
+            Token::Object("struct") |
+            Token::Object("enum") |
+            Token::Object("union") => {
+                let next_idx = idx + next_non_whitespace_token(&tokens[idx..]);
 
-            // Iterate backwards from the token just before the semicolon to find the typedef alias.
-            for token in tokens[..semicolon_index].iter().rev() {
-                if let Token::Object(name) = token {
-                    return name;
+                if next_idx + 1 >= tokens.len() {
+                    unreachable!("Invalid UDT (1)");
+                }
+                if let Token::Object(obj) = tokens[next_idx] {
+                    return obj;
                 }
             }
-            unreachable!("No valid struct name found in user defined type definition");
-        }
-        // Handle regular struct definitions
-        Token::Object("struct") | Token::Object("enum") | Token::Object("union") => {
-            // Expect the struct name to immediately follow the "struct" keyword.
-            if let Token::Object(name) = tokens[1] {
-                return name;
-            } else {
-                unreachable!("Expected name after 'struct/enum/union' keyword");
+            Token::OpenCurlyBrace => num_unclosed_braces += 1,
+            Token::CloseCurlyBrace => {
+                if num_unclosed_braces == 0 {
+                    unreachable!("Invalid UDT (unmatched close curly brace)");
+                }
+
+                num_unclosed_braces -= 1;
+
+                if num_unclosed_braces == 0 {
+                    let next_idx = idx + next_non_whitespace_token(&tokens[idx..]);
+                    if next_idx + 1 >= tokens.len() {
+                        unreachable!("Invalid UDT (2)");
+                    }
+
+                    if let Token::Object(obj) = tokens[next_idx] {
+                        return obj;
+                    }
+                }
             }
+            _ => {}
         }
-        _ => unreachable!("Token string is not a valid user defined type definition"),
+        idx += 1;
     }
+
+    unreachable!("Invalid UDT (end)");
 }
 
 /// Gets the name of the define statement
 /// Ex) for `#define FOO 42`, this would return "FOO"
 pub fn get_define_name<'a>(tokens: &'a [Token]) -> &'a str {
-    if tokens.len() < 3 || tokens[0] != Token::HashTag || tokens[1] != Token::Object("define") {
-        unreachable!("Token string is not a valid define macro");
+    if tokens.len() < 5 || tokens[0] != Token::HashTag {
+        unreachable!("Token string is not a valid define macro (1)");
     }
 
-    if let Token::Object(s) = tokens[2] {
-        return s;
-    }
-    unreachable!("Token string is not a valid define macro");
-}
+    let mut define_seen = false;
 
-fn udt_len(tokens: &[Token]) -> Option<usize> {
-    let mut num_brackets = 0;
-    let mut contains_brackets = false;
-
-    for (i, t) in tokens.iter().enumerate() {
+    for &t in &tokens[1..] {
         match t {
-            Token::OpenCurlyBrace => {
-                num_brackets += 1;
-                contains_brackets = true;
-            }
-            Token::CloseCurlyBrace => {
-                contains_brackets = true;
-                num_brackets -= 1;
-                if num_brackets < 0 {
-                    return None;
+            Token::Object("define") => {
+                if define_seen {
+                    unreachable!("Token string is not a valid define macro (2)");
                 }
+                define_seen = true;
             }
-            Token::Semicolon => {
-                if num_brackets == 0 {
-                    if contains_brackets {
-                        return Some(i);
-                    }
-                    return None;
+            Token::Object(obj) => {
+                if define_seen {
+                    return obj;
+                }
+                else {
+                    unreachable!("Token string is not a valid define macro (3)");
                 }
             }
             _ => {}
         }
     }
 
-    None
+
+    unreachable!("Token string is not a valid define macro (4)");
 }
 
 /// Updates `idx` to point to the next token specified. If the
@@ -788,6 +756,19 @@ fn skip_to_oneof(tokens: &[Token], targets: &[Token], idx: &mut usize) {
     }
 }
 
+
+/// Passing the below list to this function would return `3` (gets the next token, not the current token)
+/// `[object-token-curr, whitespace, whitespace, object-token-next]`
+#[inline]
+fn next_non_whitespace_token(tokens: &[Token]) -> usize {
+    let mut idx = 1;
+    while idx < tokens.len() && matches!(tokens[idx], Token::Space | Token::Tab | Token::NewLine | Token::Comment(_)) {
+        idx += 1;
+    }
+
+    idx
+}
+
 #[cfg(test)]
 mod lexer_tests {
     use std::fs;
@@ -797,7 +778,7 @@ mod lexer_tests {
     #[test]
     fn test_get_defines() {
         let s = fs::read_to_string("tests/lexer-define.c").unwrap();
-        let (tokens, _) = tokenize_unclean(&s).unwrap();
+        let tokens = tokenize(&s).unwrap();
 
         let defines = get_defines(&tokens);
 
@@ -818,7 +799,7 @@ mod lexer_tests {
     #[test]
     fn test_get_udts() {
         let s = fs::read_to_string("tests/lexer-UDT.c").unwrap();
-        let (tokens, _) = tokenize_unclean(&s).unwrap();
+        let tokens = tokenize(&s).unwrap();
 
         let defines = get_udts(&tokens);
 
@@ -834,7 +815,7 @@ mod lexer_tests {
     #[test]
     fn test_get_define_name() {
         let s = fs::read_to_string("tests/lexer-define.c").unwrap();
-        let (tokens, _) = tokenize_unclean(&s).unwrap();
+        let tokens = tokenize(&s).unwrap();
 
         let defines = get_defines(&tokens);
 
@@ -858,7 +839,7 @@ mod lexer_tests {
     #[test]
     fn test_get_udt_name() {
         let s = fs::read_to_string("tests/lexer-UDT.c").unwrap();
-        let (tokens, _) = tokenize_unclean(&s).unwrap();
+        let tokens = tokenize(&s).unwrap();
 
         let structs = get_udts(&tokens);
 
@@ -867,27 +848,12 @@ mod lexer_tests {
             names.push(get_udt_name(d));
         }
 
-        fs::write("tests/lexer.test_get_udt_name.log", format!("{:#?}", names)).unwrap();
-    }
+        let mut dump = "".to_string();
 
-    #[test]
-    fn test_udt_tokens_to_string() {
-        let s = fs::read_to_string("tests/lexer-UDT.c").unwrap();
-        let (tokens, _) = tokenize_unclean(&s).unwrap();
-
-        let structs = get_udts(&tokens);
-
-        let mut log_dump = "".to_string();
-        for &d in &structs {
-            let s = Token::udt_tokens_to_string(d);
-            let s_exact = format!("{:?}", &s);
-            log_dump.push_str(&s);
-            log_dump.push_str("\n");
-            log_dump.push_str("___________\n");
-            log_dump.push_str(&s_exact);
-            log_dump.push_str("\n\n\n");
+        for (i, n) in names.into_iter().enumerate() {
+            dump.push_str(&format!("{}) {}\n", i + 1, n));
         }
 
-        fs::write("tests/lexer.test_udt_tokens_to_string.log", &log_dump).unwrap();
+        fs::write("tests/lexer.test_get_udt_name.log", format!("{}", dump)).unwrap();
     }
 }

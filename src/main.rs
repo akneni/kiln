@@ -21,8 +21,34 @@ use strum::IntoEnumIterator;
 use testing::{safety, valgrind::VgOutput};
 use utils::Language;
 
+fn tmp() {
+    let text = fs::read_to_string("tests/lexer-UDT.c").unwrap();
+
+    let tokens = lexer_c::tokenize(&text).unwrap();
+
+
+    let reconstructed_text = lexer_c::Token::tokens_to_string(&tokens);
+
+    let mut temp = "".to_string();
+    for t in tokens {
+        temp.push_str(&format!("{:?}\n", t));
+    }
+
+    fs::write("temp.txt", temp).unwrap();
+
+    println!("text len: {}", text.len());
+    println!("reconstructed_text len: {}", reconstructed_text.len());
+
+    assert_eq!(text, reconstructed_text);
+
+
+    std::process::exit(0);
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    tmp();
+
     let cli_args: cli::CliCommand;
     let raw_cli_args = std::env::args().collect::<Vec<String>>();
     if raw_cli_args.len() < 2 {

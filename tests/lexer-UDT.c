@@ -136,9 +136,92 @@ struct Container {
     };  // Note: This union is anonymous and its members become members of Container.
 };
 
-// Test Case 20: Random bullshit that doesn't work for some reason
+/* Test Case 20: Random bullshit that doesn't work for some reason */
 typedef enum BlockType {
 	BlockTypeCreate,
 	BlockTypeUpdate,
 	BlockTypeDelete,
 } BlockType;
+
+/* Test Case 21: Struct with additional attributes */
+typedef struct TcpPacket {
+    unsigned char data[1024];
+} TcpPacket __attribute__((aligned(4)));
+
+// Test case 22: Struct with function pointer members
+struct Callbacks {
+    void (*onStart)(void);
+    int (*calculate)(int, int);
+    void (*cleanup)(void*);
+};
+
+// Test case 23: Forward declaration of a struct
+struct ForwardDeclared;
+
+// Test case 24: Typedef for a function pointer type
+typedef int (*CompareFn)(const void*, const void*);
+
+// Test case 25: Struct with a flexible array member (C99 feature)
+struct Buffer {
+    int size;
+    char data[];  // Flexible array member
+};
+
+// Test case 26: Struct with multiple nested comments
+struct /* outer comment start */ CommentTest /* between comments */ {
+    int /* comment before member */ value; /* comment after member */
+} /* comment before semicolon */;
+
+// Test case 27: Nested typedef declarations
+typedef struct {
+    typedef enum {
+        INNER_ONE,
+        INNER_TWO
+    } InnerEnum;
+    InnerEnum value;
+} OuterStruct;
+
+// Test case 28: Union with bit fields
+union BitAccess {
+    unsigned int fullValue;
+    struct {
+        unsigned int lowBits : 16;
+        unsigned int highBits : 16;
+    } parts;
+};
+
+// Test case 29: Empty struct declaration
+struct Empty {
+};
+
+// Test case 30: Multi-dimensional array member in a struct
+struct Matrix {
+    float elements[4][4];
+    char name[32];
+};
+
+// Test case 31: Typedef for a void pointer
+typedef void* VoidPtr;
+
+// Test case 32: Typedef for an array type
+typedef int IntArray[10];
+
+// Test case 33: Union with anonymous enum
+union WithEnum {
+    enum {
+        STATE_IDLE,
+        STATE_BUSY,
+        STATE_ERROR
+    } state;
+    int rawState;
+};
+
+// Test case 34: Struct with volatile and const members
+struct SpecialMembers {
+    volatile int counter;
+    const char* message;
+    char* const buffer;
+};
+
+// Test case 35: Complex typedef with function pointer returning a struct pointer
+typedef struct Node* (*NodeFactory)(int value);

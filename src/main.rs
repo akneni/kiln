@@ -618,6 +618,12 @@ fn handle_tests(profile: &str, config: &Config, test_file: &str) -> Result<()> {
     build_sys::link_proj_files(&config, &cwd, lang, &mut link_file)
         .map_err(|err| anyhow!("Failed to link source files: {}", err))?;
 
+    let main_file = config.get_main_filepath();
+    link_file = link_file
+        .into_iter()
+        .filter(|f| !f.ends_with(&main_file))
+        .collect();
+
     link_file.push(test_file.to_string());
 
     let link_lib = build_sys::link_sys_lib(&cwd);

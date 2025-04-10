@@ -458,21 +458,25 @@ pub fn get_includes<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     let mut idx: usize = 0;
     while idx < tokens.len() {
         if let Token::HashTag = tokens[idx] {
-            if tokens[idx + 1] != Token::Object("include") {
-                idx += 1;
+            let next_nwt = next_non_whitespace_token(&tokens[idx..]);
+            if tokens[idx+next_nwt] != Token::Object("include") {
+                idx += next_nwt;
                 continue;
             }
-            let mut end = idx;
+
+            let mut end = idx + next_nwt;
             skip_to_oneof(
                 tokens,
-                &[Token::GreaterThan, Token::Literal("\"")],
+                &[Token::GreaterThan, Token::Literal("")],
                 &mut end,
             );
+
             includes.push(&tokens[idx..(end + 1)]);
-            idx = end;
-            continue;
+            idx = end + 1;
         }
-        idx += 1;
+        else {
+            idx += 1;
+        }
     }
 
     includes
@@ -658,6 +662,29 @@ pub fn get_define_name<'a>(tokens: &'a [Token]) -> &'a str {
 
 
     unreachable!("Token string is not a valid define macro (4)");
+}
+
+pub fn get_include_name<'a>(tokens: &'a [Token]) -> String {
+    assert!(tokens[0] == Token::HashTag);
+
+    let mut idx = 0;
+    let target_tok = [Token::LessThan, Token::Literal("")];
+    skip_to_oneof(tokens, &target_tok, &mut idx);
+
+    match tokens[idx] {
+        Token::LessThan => {
+            let mut name = "".to_string();
+            if let Token::Object(obj) = tokens[idx+1] {
+                name.push_str(obj);
+            }
+        }
+        Token::Literal(s) => {
+            return s.trim_end_matches('"').to_string();
+        }
+        _ => unreachable!(),
+    }
+
+    ""
 }
 
 /// Updates `idx` to point to the next token specified. If the

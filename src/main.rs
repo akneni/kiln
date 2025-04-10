@@ -490,6 +490,7 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
 
             let mut defines_h = lexer_c::get_defines(&tokens_h);
             let mut udts_h = lexer_c::get_udts(&tokens_h);
+            let mut includes_h = lexer_c::get_includes(&tokens_h);
 
             let fn_defs = lexer_c::get_fn_def(&tokens);
             let includes = lexer_c::get_includes(&tokens);

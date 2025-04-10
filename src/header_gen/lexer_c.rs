@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use anyhow::{anyhow, Result};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Token<'a> {
     Object(&'a str),
     Literal(&'a str),
@@ -204,29 +206,50 @@ fn find_len_comment(code_bytes: &[u8]) -> usize {
 /// Reconstructs the soruce code excluding the ranges specified 
 pub fn reconstruct_source(tokens: &[Token], exclude_ranges: &[&[Token]]) -> String {
     let mut new_tokens = vec![];
+    
+    let mut exlcude_map: HashMap<&[Token], Vec<&[Token]>> = HashMap::new();
+    
+    for &range in exclude_ranges {
+        if range.len() < 3 {
+            unreachable!();
+        }
 
-    let mut er_idx = 0;
+        let entry = exlcude_map.entry(&range[0..3]).or_default();
+        entry.push(range);
+    }
+
+
     let mut idx = 0;
     
     while idx < tokens.len() {
-        let mut len = 0;
-        let mut is_exlcude_range = false;
-        
-        if er_idx < exclude_ranges.len() {
-            len = exclude_ranges[er_idx].len();
-            is_exlcude_range = er_idx < exclude_ranges.len() &&
-                (idx+len) <= tokens.len() &&
-                &tokens[idx..(idx+len)] == exclude_ranges[er_idx];
-        }
-
-        if is_exlcude_range {
-            er_idx += 1;
-            idx += len;
-        }
-        else {
+        if idx + 3 >= tokens.len() {
             new_tokens.push(tokens[idx]);
             idx += 1;
+            continue;
         }
+
+        if let Some(vec) = exlcude_map.get(&tokens[idx..(idx+3)]) {
+            let mut skip_len = 0;
+
+            for &range in vec {
+                if range.len() > tokens[idx..].len() {
+                    continue;
+                }
+                if range == &tokens[idx..(idx+range.len())] {
+                    skip_len = range.len();
+                    break;
+                }
+            }
+
+            if skip_len > 0 {
+                idx += skip_len;
+                continue;
+            }
+        }
+
+        new_tokens.push(tokens[idx]);
+        idx += 1;
+    
     }
 
     Token::tokens_to_string(&new_tokens)
@@ -364,9 +387,9 @@ const TOKEN_MAPPING: [Option<Token>; 128] = [
     None,
 ];
 
-const RESTRICTED_KWARGS: &[&str] = &["for", "while", "if"];
-
+// Extracts the function definitions of all non-static functions
 pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
+    const RESTRICTED_KWARGS: &[&str] = &["for", "while", "if"];
     let mut fn_defs = vec![];
 
     let mut conditions: [bool; 3];
@@ -388,6 +411,9 @@ pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                 continue;
             } else if obj == "define" {
                 skip_to(tokens, Token::NewLine, &mut idx);
+                continue;
+            } else if obj == "static" {
+                skip_to_oneof(tokens, &[Token::OpenParen, Token::OpenCurlyBrace], &mut idx);
                 continue;
             } else if matches!(obj, "return" | "if") {
                 idx += 1;

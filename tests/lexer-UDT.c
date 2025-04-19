@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 // Test case 1: Simple struct definition
 struct Point {
     int x;

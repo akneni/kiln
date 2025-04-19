@@ -104,39 +104,33 @@ pub fn check_files_threaded(source_type: &str, warn_buff: Arc<Mutex<Vec<Warning>
 fn scan_file(filename: &str, source_code: &str, func_map: &FunctionMap) -> Vec<Warning> {
     let mut warnings = vec![];
 
-    for (line_num, line) in source_code.split('\n').enumerate() {
-        if line.trim().len() == 0 {
+    let tokens = lexer_c::tokenize(source_code)
+        .unwrap();
+
+    for (token_num, token) in tokens.iter().enumerate() {
+        if tokens[token_num..].len() < 3 {
             continue;
         }
 
-        let tokens = match lexer_c::tokenize(line) {
-            Ok(t) => t,
-            Err(_) => continue,
-        };
-        if tokens.len() < 3 {
-            continue;
-        }
+        if let lexer_c::Token::Object(obj) = token {
+            if tokens[token_num + 1] != lexer_c::Token::OpenParen {
+                continue;
+            }
+            if let Some(safe_fn) = func_map.map.get(*obj) {
+                let warning = Warning {
+                    warning_type: WarningType::UnsafeFunction,
+                    msg: format!(
+                        "{}() is an unsafe function. Consuder using {}() instead",
+                        obj, safe_fn
+                    ),
+                    filename: filename.to_string(),
+                    line: token_num + 1,
+                };
 
-        for i in 0..(tokens.len() - 1) {
-            if let lexer_c::Token::Object(obj) = tokens[i] {
-                if tokens[i + 1] != lexer_c::Token::OpenParen {
-                    continue;
-                }
-                if let Some(safe_fn) = func_map.map.get(obj) {
-                    let warning = Warning {
-                        warning_type: WarningType::UnsafeFunction,
-                        msg: format!(
-                            "{}() is an unsafe function. Consuder using {}() instead",
-                            obj, safe_fn
-                        ),
-                        filename: filename.to_string(),
-                        line: line_num + 1,
-                    };
-
-                    warnings.push(warning);
-                }
+                warnings.push(warning);
             }
         }
+        
     }
 
     warnings

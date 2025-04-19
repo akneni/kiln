@@ -34,24 +34,20 @@ pub fn merge_defines<'a>(
 pub fn merge_includes<'a>(
     dst: &mut Vec<&'a [lexer_c::Token<'a>]>,
     src: &[&'a [lexer_c::Token<'a>]],
-) -> Result<()> {
+) {
     let mut dst_set = HashSet::new();
 
     for &tokens in dst.iter() {
-        let s = lexer_c::get_define_name(tokens);
+        let s = lexer_c::get_include_name(tokens);
         dst_set.insert(s);
     }
 
     for &tokens in src.iter() {
-        let s = lexer_c::get_define_name(tokens);
-        if dst_set.contains(&s) {
-            return Err(anyhow!("Duplicate #define definitions for {}", s));
+        let s = lexer_c::get_include_name(tokens);
+        if !dst_set.contains(&s) {
+            dst.push(tokens);
         }
     }
-
-    dst.extend_from_slice(src);
-
-    Ok(())
 }
 
 /// Returns an error if there are any duplicate definitions

@@ -508,6 +508,10 @@ pub fn get_udts<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                 idx
             };
 
+            let mut conditions = [
+                false, // Contains at least one set of curly braces
+                true,  // Contains no `=` characters
+            ];
             match tokens[next_idx] {
                 Token::Object("struct") |
                 Token::Object("enum") |
@@ -524,15 +528,19 @@ pub fn get_udts<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                                     unreachable!();
                                 }
 
+                                conditions[0] = true;
                                 curlybrace_stack -= 1;
                             }
                             Token::Semicolon => {
                                 if curlybrace_stack == 0 {
-                                    let x = &tokens[start_idx..=idx];
-                                    udts.push(x);
+                                    if conditions.iter().all(|&i| i) {
+                                        let x = &tokens[start_idx..=idx];
+                                        udts.push(x);
+                                    }
                                     break;
                                 }
                             }
+                            Token::Equal => conditions[1] = false,
                             _ => {},
                         }
                         idx += 1;
@@ -676,15 +684,28 @@ pub fn get_include_name<'a>(tokens: &'a [Token]) -> String {
             let mut name = "".to_string();
             if let Token::Object(obj) = tokens[idx+1] {
                 name.push_str(obj);
+            } else {
+                panic!();
             }
+            
+            if let Token::Period = tokens[idx+2] {
+                name.push('.');
+            } else {
+                panic!();
+            }
+
+            if let Token::Object(obj) = tokens[idx+3] {
+                name.push_str(obj);
+            } else {
+                panic!();
+            }
+            return name;
         }
         Token::Literal(s) => {
             return s.trim_end_matches('"').to_string();
         }
         _ => unreachable!(),
     }
-
-    ""
 }
 
 /// Updates `idx` to point to the next token specified. If the

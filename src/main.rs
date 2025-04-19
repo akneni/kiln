@@ -239,38 +239,38 @@ async fn main() {
             }
             let config = config.unwrap();
 
-            let test_dir = Path::new("tests");
-            if !test_dir.exists() {
-                process::exit(0);
-            }
+            let mut files_to_test = vec![];
 
-            if let Some(_tests) = tests.as_ref() {
-                eprintln!("running specific tests not yet supported");
-                std::process::exit(0);
+            if let Some(tests) = tests.as_ref() {
+                files_to_test.extend_from_slice(&tests);
+            } 
+            else if let Ok(test_dir) = Path::new("tests").read_dir() {
+                for file in test_dir {
+                    if let Ok(file) = file {                           
+                        let filepath = file.path();
+                        let filepath = filepath.to_str()
+                            .unwrap();
+                        files_to_test.push(filepath.to_string());
+                    }
+                }
+            } 
+            else {
+                eprintln!("unable to read test directory");
+                process::exit(1);
             }
 
             let seperator = "=".repeat(40);
             println!("\n\n");
-            if let Ok(test_dir) = test_dir.read_dir() {
-                for file in test_dir {
-                    if let Ok(file) = file {
-                        println!("{a}\n{b:?}\n{a}", a=seperator, b=file.file_name());
-                        
-                        let filepath = file.path();
-                        let filepath = filepath.to_str()
-                            .unwrap();
 
-                        let res = handle_tests("--debug", &config, filepath);
-                        if let Err(err) = res {
-                            println!("{}", err);
-                        }
+            for file in &files_to_test {
+                println!("{a}\n{b:?}\n{a}", a=seperator, b=file);
 
-                        println!("{}\n\n\n", seperator);
-                    }
+                let res = handle_tests("--debug", &config, file);
+                if let Err(err) = res {
+                    println!("{}", err);
                 }
-            } else {
-                eprintln!("unable to read test directory");
-                process::exit(1);
+
+                println!("{}\n\n\n", seperator);
             }
         }
         cli::Commands::LocalDev { subcommand } => match subcommand {
@@ -517,6 +517,8 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
                 process::exit(1);
             }
 
+            header_gen::merge_includes(&mut includes_h, &includes);
+
             let mut headers = String::new();
 
             headers.push_str(&format!("#ifndef {}_H\n", raw_name.to_uppercase()));
@@ -544,7 +546,7 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
 
             for &func in &fn_defs {
                 // turn `inline void XXX() {}` in .c into `extern inline void XXX();` in .h
-                if func[0] == lexer_c::Token::Object("inline") {
+                if let lexer_c::Token::Object("inline") = func[0] {
                     headers.push_str("extern ");
                 }
 

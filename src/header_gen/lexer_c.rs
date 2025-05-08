@@ -389,10 +389,7 @@ const TOKEN_MAPPING: [Option<Token>; 128] = [
 
 // Extracts the function definitions of all non-static functions
 pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
-    const RESTRICTED_KWARGS: &[&str] = &["for", "while", "if"];
     let mut fn_defs = vec![];
-
-    // TODO - get this to work with the comment prefixes. 
 
     let mut conditions: [bool; 3];
 
@@ -404,28 +401,37 @@ pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
             false, // Has close paren
         ];
 
-        if let Token::Object(obj) = tokens[idx] {
-            if RESTRICTED_KWARGS.contains(&obj) {
-                skip_to(tokens, Token::CloseParen, &mut idx);
+        let mut next_idx = idx;
+        if let Token::Comment(_) = tokens[idx] {
+            skip_to_end_comment(tokens, &mut next_idx);
+        }
+
+        if let Token::Object(obj) = tokens[next_idx] {
+            if matches!(obj, "for" | "while" | "if") {
+                skip_to(tokens, Token::CloseParen, &mut next_idx);
+                idx = next_idx;
                 continue;
             } else if obj == "include" {
-                skip_to_oneof(tokens, &[Token::GreaterThan, Token::Literal("\"")], &mut idx);
+                skip_to_oneof(tokens, &[Token::GreaterThan, Token::Literal("\"")], &mut next_idx);
+                idx = next_idx;
                 continue;
             } else if obj == "define" {
-                skip_to(tokens, Token::NewLine, &mut idx);
+                skip_to(tokens, Token::NewLine, &mut next_idx);
+                idx = next_idx;
                 continue;
             } else if obj == "static" {
-                skip_to_oneof(tokens, &[Token::OpenParen, Token::OpenCurlyBrace], &mut idx);
+                skip_to_oneof(tokens, &[Token::OpenParen, Token::OpenCurlyBrace], &mut next_idx);
+                idx = next_idx;
                 continue;
             } else if matches!(obj, "return" | "if") {
-                idx += 1;
+                idx = next_idx + 1;
                 continue;
             }
 
-            let mut j = idx + 1;
+            let mut j = next_idx + 1;
             while j < tokens.len() {
                 if let Token::Object(obj_2) = tokens[j] {
-                    if RESTRICTED_KWARGS.contains(&obj_2) || obj_2 == "main" {
+                    if matches!(obj_2, "for" | "while" | "if" | "main") {
                         break;
                     }
                     conditions[0] = true;

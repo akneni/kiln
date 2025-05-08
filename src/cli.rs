@@ -4,8 +4,8 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(name = "Kiln")]
-#[command(version = "0.1.3")]
-#[command(about = "A modern build system for C/C++", long_about = None)]
+#[command(version = "0.1.4")]
+#[command(about = "A modern build system for C", long_about = None)]
 pub struct CliCommand {
     #[command(subcommand)]
     pub command: Commands,
@@ -23,7 +23,10 @@ pub enum Commands {
         #[arg(value_enum, long, default_value = "c")]
         language: utils::Language,
     },
-    GenHeaders,
+    GenHeaders {
+        #[arg()]
+        args: Option<Vec<String>>
+    },
     Add {
         dep_uri: String,
     },

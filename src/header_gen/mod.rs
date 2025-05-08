@@ -103,7 +103,11 @@ pub fn insert_self_include(code: String, include: &str) -> String {
 
     let include_line = format!("#include {}", include);
 
-    code_lines.insert(line_idx + 1, &include_line);
+    if code_lines.len() == 0 {
+        code_lines.push(&include_line);
+    } else {
+        code_lines.insert(line_idx + 1, &include_line);
+    }
 
     code_lines.join("\n")
 }

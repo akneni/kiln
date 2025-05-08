@@ -87,7 +87,7 @@ async fn main() {
                 println!("An error occurred while creating the project:\n{}", e);
             }
         }
-        cli::Commands::GenHeaders => {
+        cli::Commands::GenHeaders { args } => {
             if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
                 println!("{}", e);
                 process::exit(1);
@@ -99,7 +99,7 @@ async fn main() {
                 process::exit(0);
             }
 
-            if let Err(err) = handle_gen_headers(&config) {
+            if let Err(err) = handle_gen_headers(&config, args) {
                 println!("An error occurred while generating header files:\n{}", err);
                 process::exit(1);
             }
@@ -465,13 +465,23 @@ fn handle_execution(
     Ok(())
 }
 
-fn handle_gen_headers(config: &Config) -> Result<()> {
+fn handle_gen_headers(config: &Config, mut files: Option<Vec<String>>) -> Result<()> {
     let cwd = env::current_dir()?;
     let src_dir = config.get_src_dir();
     let inc_dir = config.get_include_dir();
 
     let src_dir = cwd.join(src_dir);
     let inc_dir = cwd.join(inc_dir);
+
+    files.as_mut().map(|v| {
+        for i in 0..v.len() {
+            let idx = v[i].rfind('/');
+            if let Some(idx) = idx {
+                v[i] = v[i][(idx+1)..].to_string();
+            }
+            
+        }
+    });   
 
     for file in fs::read_dir(&src_dir).unwrap() {
         if let Ok(file) = file {
@@ -480,6 +490,14 @@ fn handle_gen_headers(config: &Config) -> Result<()> {
             if raw_name == "main" || file_ext != "c" {
                 continue;
             }
+
+            if let Some(files) = &files {
+                let full_name = format!("{}.{}", raw_name, file_ext);
+                if !files.contains(&full_name) {
+                    continue;
+                }
+            }
+
             let header_name = format!("{}.h", raw_name);
 
             let code = fs::read_to_string(file.path())?;

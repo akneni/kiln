@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(name = "Kiln")]
-#[command(version = "0.1.4")]
+#[command(version = "0.1.5")]
 #[command(about = "A modern build system for C", long_about = None)]
 pub struct CliCommand {
     #[command(subcommand)]
@@ -40,7 +40,6 @@ pub enum Commands {
     Run {
         profile: String,
         args: Vec<String>,
-        valgrind: bool,
     },
 
     Test {
@@ -53,7 +52,7 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub fn new(variant: &str, profile: &str, args: Vec<String>, valgrind: bool) -> Self {
+    pub fn new(variant: &str, profile: &str, args: Vec<String>) -> Self {
         match variant {
             "build" => Self::Build {
                 profile: profile.to_string(),
@@ -61,7 +60,6 @@ impl Commands {
             "run" => Self::Run {
                 profile: profile.to_string(),
                 args,
-                valgrind,
             },
             _ => panic!("Parameter `variant` must be one of 'build' or 'run'"),
         }

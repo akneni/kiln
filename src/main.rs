@@ -18,7 +18,7 @@ use local_dev::{dev_env_config, editors};
 use packaging::package_manager::{self, PkgError};
 use std::{env, fs, io::Write, path::Path, process, time};
 use strum::IntoEnumIterator;
-use testing::{safety, valgrind::VgOutput};
+use testing::safety;
 use utils::Language;
 
 #[tokio::main(flavor = "current_thread")]
@@ -51,9 +51,8 @@ async fn main() {
                 process::exit(1);
             }
         }
-        let valgrind = raw_cli_args.contains(&"--valgrind".to_string());
         cli_args = cli::CliCommand {
-            command: cli::Commands::new(&raw_cli_args[1], &profile, args, valgrind),
+            command: cli::Commands::new(&raw_cli_args[1], &profile, args),
         }
     } else {
         cli_args = cli::CliCommand::parse();
@@ -169,7 +168,6 @@ async fn main() {
         cli::Commands::Run {
             profile,
             args,
-            valgrind,
         } => {
             if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
                 println!("{}", e);
@@ -193,44 +191,12 @@ async fn main() {
                 process::exit(1);
             }
 
-            if valgrind {
-                if env::consts::OS != "linux" {
-                    eprintln!("Valgrind is only supported for linux.");
-                    std::process::exit(1);
-                }
-                let exe_path = cwd
-                    .join("build")
-                    .join(&profile[2..])
-                    .join(config.project.name);
-
-                let bin = exe_path.to_str().unwrap();
-                let valgrind_out = match safety::exec_w_valgrind(bin, &args) {
-                    Ok(vg) => vg,
-                    Err(e) => {
-                        if !e
-                            .to_string()
-                            .to_lowercase()
-                            .contains("error parsing valgrind")
-                        {
-                            eprintln!("Error executing with valgrind");
-                            process::exit(1);
-                        }
-                        VgOutput::default()
-                    }
-                };
-
-                if valgrind_out.errors.len() > 0 {
-                    println!("{}\n", *SEPARATOR);
-                    safety::print_vg_errors(&valgrind_out);
-                }
-            } else {
-                // If use_valgrind = false
-                let err = handle_execution(&profile, &config, &cwd, &args);
-                if let Err(e) = err {
-                    eprintln!("Code build successfully, but failed to execute:\n{}", e);
-                    process::exit(1);
-                }
+            let err = handle_execution(&profile, &config, &cwd, &args);
+            if let Err(e) = err {
+                eprintln!("Code build successfully, but failed to execute:\n{}", e);
+                process::exit(1);
             }
+            
         }
         cli::Commands::Test { tests } => {
             if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {

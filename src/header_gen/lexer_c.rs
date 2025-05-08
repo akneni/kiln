@@ -392,6 +392,8 @@ pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     const RESTRICTED_KWARGS: &[&str] = &["for", "while", "if"];
     let mut fn_defs = vec![];
 
+    // TODO - get this to work with the comment prefixes. 
+
     let mut conditions: [bool; 3];
 
     let mut idx: usize = 0;
@@ -457,14 +459,19 @@ pub fn get_includes<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
 
     let mut idx: usize = 0;
     while idx < tokens.len() {
-        if let Token::HashTag = tokens[idx] {
-            let next_nwt = next_non_whitespace_token(&tokens[idx..]);
-            if tokens[idx+next_nwt] != Token::Object("include") {
+        let mut next_idx = idx;
+        if let Token::Comment(_) = tokens[next_idx] {
+            skip_to_end_comment(tokens, &mut next_idx);
+        }
+
+        if let Token::HashTag = tokens[next_idx] {
+            let next_nwt = next_non_whitespace_token(&tokens[next_idx..]);
+            if tokens[next_idx+next_nwt] != Token::Object("include") {
                 idx += next_nwt;
                 continue;
             }
 
-            let mut end = idx + next_nwt;
+            let mut end = next_idx + next_nwt;
             skip_to_oneof(
                 tokens,
                 &[Token::GreaterThan, Token::Literal("")],
@@ -491,6 +498,12 @@ pub fn get_udts<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
 
     let mut idx: usize = 0;
     while idx < tokens.len() - 2 {
+        let start_idx = idx;
+
+        if let Token::Comment(_) = tokens[idx] {
+            skip_to_end_comment(tokens, &mut idx);
+        }
+
         if let Token::Object(obj) = tokens[idx] {
             if !matches!(obj, "typedef" | "struct" | "union" | "enum") {
                 idx += 1;
@@ -516,7 +529,6 @@ pub fn get_udts<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                 Token::Object("struct") |
                 Token::Object("enum") |
                 Token::Object("union") => {
-                    let start_idx = idx;
                     idx = next_idx;
                     let mut curlybrace_stack = 0;
 
@@ -565,11 +577,19 @@ pub fn get_defines<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     let mut idx: usize = 0;
 
     while idx < tokens.len() {
-        if tokens[idx] != Token::HashTag {
-            skip_to(tokens, Token::HashTag, &mut idx);
+        if 
+            tokens[idx] != Token::HashTag &&
+            std::mem::discriminant(&tokens[idx]) != std::mem::discriminant(&Token::Comment(""))
+        {
+            let valid_prefixes = &[Token::HashTag, Token::Comment("")];
+            skip_to_oneof(tokens, valid_prefixes, &mut idx);
         }
 
         let start_idx = idx;
+
+        if let Token::Comment(_) = tokens[idx] {
+            skip_to_end_comment(tokens, &mut idx);
+        }
 
         if idx + 1 >= tokens.len() || tokens[idx + 1] != Token::Object("define") {
             idx += 2;
@@ -642,13 +662,18 @@ pub fn get_udt_name<'a>(tokens: &'a [Token]) -> &'a str {
 /// Gets the name of the define statement
 /// Ex) for `#define FOO 42`, this would return "FOO"
 pub fn get_define_name<'a>(tokens: &'a [Token]) -> &'a str {
-    if tokens.len() < 5 || tokens[0] != Token::HashTag {
+    let mut idx = 0;
+    if let Token::Comment(_) = tokens[idx] {
+        skip_to_end_comment(tokens, &mut idx);
+    }
+
+    if tokens.len() < 5 || tokens[idx] != Token::HashTag {
         unreachable!("Token string is not a valid define macro (1)");
     }
 
     let mut define_seen = false;
 
-    for &t in &tokens[1..] {
+    for &t in &tokens[(idx+1)..] {
         match t {
             Token::Object("define") => {
                 if define_seen {
@@ -673,9 +698,13 @@ pub fn get_define_name<'a>(tokens: &'a [Token]) -> &'a str {
 }
 
 pub fn get_include_name<'a>(tokens: &'a [Token]) -> String {
+    let mut idx = 0;
+    if let Token::Comment(_) = tokens[idx] {
+        skip_to_end_comment(tokens, &mut idx);
+    }
+
     assert!(tokens[0] == Token::HashTag);
 
-    let mut idx = 0;
     let target_tok = [Token::LessThan, Token::Literal("")];
     skip_to_oneof(tokens, &target_tok, &mut idx);
 
@@ -717,6 +746,25 @@ fn skip_to_oneof(tokens: &[Token], targets: &[Token], idx: &mut usize) {
                 return;
             }
         }
+    }
+}
+
+/// If we have a block commant (or multiple single line comments seperated by no more than a single \n character),
+/// this function will skip to the end of all of them (including the trailing newline if it exists). 
+fn skip_to_end_comment(tokens: &[Token], idx: &mut usize) {
+    assert_eq!(
+        std::mem::discriminant(&tokens[*idx]), 
+        std::mem::discriminant(&Token::Comment(""))
+    );
+
+    while
+        std::mem::discriminant(&tokens[*idx]) == std::mem::discriminant(&Token::Comment("")) ||
+        tokens[*idx] == Token::NewLine
+    {
+        if tokens[*idx] == Token::NewLine && tokens[*idx + 1] == Token::NewLine {
+            break;
+        }
+        *idx += 1;
     }
 }
 

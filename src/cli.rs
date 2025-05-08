@@ -35,6 +35,7 @@ pub enum Commands {
     // Clap doesn't provide any way to structure the syntax to be `kiln run --profile
     // So, we'll have to parse these manually.
     Build {
+        #[arg(default_value_t = String::from("--debug"))]
         profile: String,
     },
     Run {

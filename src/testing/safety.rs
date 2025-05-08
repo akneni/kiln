@@ -1,4 +1,4 @@
-use crate::{constants::VALGRIND_OUT, lexer_c, utils};
+use crate::lexer_c;
 
 use anyhow::{anyhow, Result};
 use std::{
@@ -6,7 +6,6 @@ use std::{
     env,
     fmt::Debug,
     fs,
-    process::{self, Command},
     sync::{Arc, Mutex},
 };
 

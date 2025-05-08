@@ -3,7 +3,6 @@ mod cli;
 mod config;
 mod constants;
 mod header_gen;
-mod kiln_errors;
 mod local_dev;
 mod packaging;
 mod testing;

@@ -1,15 +1,15 @@
 use crate::{
     config::Config,
     constants::DEV_ENV_CFG_FILE,
-    kiln_errors::{KilnError, KilnResult},
     local_dev::dev_env_config::{DevEnvConfig, EditorType},
 };
 
 use serde_json::Value;
 use serde_yaml::{Mapping, Value as YmlValue};
 use std::{fs, path::Path};
+use anyhow::{Result, anyhow};
 
-pub fn handle_editor_includes(config: &Config, proj_dir: impl AsRef<Path>) -> KilnResult<()> {
+pub fn handle_editor_includes(config: &Config, proj_dir: impl AsRef<Path>) -> Result<()> {
     let local_dev_file = proj_dir.as_ref().join(DEV_ENV_CFG_FILE);
 
     if !local_dev_file.exists() {
@@ -45,10 +45,10 @@ fn set_include(
     dev_config: &DevEnvConfig,
     includes: &[String],
     proj_dir: impl AsRef<Path>,
-) -> KilnResult<()> {
+) -> Result<()> {
     let editor = match dev_config.editor {
         Some(e) => e,
-        None => return Err(KilnError::new_unknown("Dev config file doesn't exist")),
+        None => return Err(anyhow!("Dev config file doesn't exist")),
     };
     match editor {
         EditorType::VsCode => {
@@ -59,7 +59,7 @@ fn set_include(
         }
         _ => {
             let msg = format!("Support for `{:?}` is not yet supported", editor);
-            return Err(KilnError::new_unknown(msg));
+            return Err(anyhow!(msg));
         }
     }
 
@@ -141,7 +141,7 @@ fn set_include_vscode(includes: &[String], proj_dir: impl AsRef<Path>) {
 }
 
 // Sets the propor include paths in `.clangd`
-fn set_include_clangd(includes: &[String], proj_dir: impl AsRef<Path>) -> KilnResult<()> {
+fn set_include_clangd(includes: &[String], proj_dir: impl AsRef<Path>) -> Result<()> {
     let config_file = proj_dir.as_ref().join(".clangd");
 
     // Read the existing .clangd file or start with an empty mapping.
@@ -154,7 +154,7 @@ fn set_include_clangd(includes: &[String], proj_dir: impl AsRef<Path>) -> KilnRe
 
     // Ensure that the top-level is a mapping.
     let config_map = config.as_mapping_mut().ok_or_else(|| {
-        KilnError::new_unknown("Invalid .clangd file structure: expected a mapping")
+        anyhow!("Invalid .clangd file structure: expected a mapping")
     })?;
 
     // Get or create the "CompileFlags" mapping.
@@ -163,7 +163,7 @@ fn set_include_clangd(includes: &[String], proj_dir: impl AsRef<Path>) -> KilnRe
         .or_insert_with(|| YmlValue::Mapping(Mapping::new()));
 
     let compile_flags_map = compile_flags.as_mapping_mut().ok_or_else(|| {
-        KilnError::new_unknown(
+        anyhow!(
             "Invalid .clangd file structure: expected CompileFlags to be a mapping",
         )
     })?;
@@ -174,7 +174,7 @@ fn set_include_clangd(includes: &[String], proj_dir: impl AsRef<Path>) -> KilnRe
         .or_insert_with(|| YmlValue::Sequence(vec![]));
 
     let add_seq = add.as_sequence_mut().ok_or_else(|| {
-        KilnError::new_unknown("Invalid .clangd file structure: expected Add to be a sequence")
+        anyhow!("Invalid .clangd file structure: expected Add to be a sequence")
     })?;
 
     // Define the default include flag.

@@ -9,7 +9,6 @@ use std::{
 pub const CONFIG_FILE: &str = "Kiln.toml";
 pub const DEV_ENV_CFG_FILE: &str = "kiln-dev-env-config.toml";
 pub const PACKAGE_CONFIG_FILE: &str = "kiln-package.toml";
-pub const VALGRIND_OUT: &str = "kiln-valgrind-output.xml";
 
 pub static DATA_DIR: Lazy<PathBuf> = Lazy::new(|| {
     let paths = [

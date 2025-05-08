@@ -42,9 +42,6 @@ pub enum PkgError {
     #[error("User error: {0}")]
     UsrErr(String),
 
-    #[error("Dir not Found error: {0}")]
-    PkgAmbiguous(String),
-
     #[error("Unknown error: {0}")]
     Unknown(String),
 }

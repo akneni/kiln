@@ -21,12 +21,6 @@ impl KilnPackageConfig {
         let c: Self = toml::from_str(&s)?;
         Ok(c)
     }
-
-    pub fn to_disk(&self, path: impl AsRef<Path>) -> Result<()> {
-        let s = toml::to_string_pretty(&self)?;
-        fs::write(path, s)?;
-        Ok(())
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

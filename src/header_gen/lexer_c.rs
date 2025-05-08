@@ -681,25 +681,10 @@ pub fn get_include_name<'a>(tokens: &'a [Token]) -> String {
 
     match tokens[idx] {
         Token::LessThan => {
-            let mut name = "".to_string();
-            if let Token::Object(obj) = tokens[idx+1] {
-                name.push_str(obj);
-            } else {
-                panic!();
-            }
-            
-            if let Token::Period = tokens[idx+2] {
-                name.push('.');
-            } else {
-                panic!();
-            }
+            let mut end_idx = idx;
+            skip_to(tokens, Token::GreaterThan, &mut end_idx);
 
-            if let Token::Object(obj) = tokens[idx+3] {
-                name.push_str(obj);
-            } else {
-                panic!();
-            }
-            return name;
+            return Token::tokens_to_string(&tokens[(idx+1)..end_idx]);
         }
         Token::Literal(s) => {
             return s.trim_end_matches('"').to_string();

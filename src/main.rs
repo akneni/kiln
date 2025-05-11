@@ -27,23 +27,23 @@ async fn main() {
     if raw_cli_args.len() < 2 {
         // Let the program fail and have Clap display it's help message
         cli_args = cli::CliCommand::parse();
-    } else if raw_cli_args[1] == "run" || raw_cli_args[1] == "build" {
+    } 
+    else if matches!(raw_cli_args[1].as_str(), "run" | "build" | "build-trace") {
         let mut profile = "--debug".to_string();
         let mut args = vec![];
         if raw_cli_args.len() >= 3
             && raw_cli_args[2].starts_with("--")
             && raw_cli_args[2].len() > 2
-            && raw_cli_args[2] != "--valgrind"
         {
             // Extracts compilation profile
-
             profile = raw_cli_args[2].clone();
         }
         if let Some(idx) = raw_cli_args.iter().position(|i| i == "--") {
             // Extracts passthrough CLI arguments (kiln run)
             assert!([2_usize, 3_usize].contains(&idx));
             args = raw_cli_args[(idx + 1)..].to_vec();
-        } else {
+        } 
+        else {
             // verify structure of CLI arguments
             if !(raw_cli_args.len() <= 3) {
                 println!("Invalid CLI arguments");
@@ -53,7 +53,8 @@ async fn main() {
         cli_args = cli::CliCommand {
             command: cli::Commands::new(&raw_cli_args[1], &profile, args),
         }
-    } else {
+    } 
+    else {
         cli_args = cli::CliCommand::parse();
     }
 
@@ -197,6 +198,39 @@ async fn main() {
             }
             
         }
+        cli::Commands::BuildTrace { profile } => {
+            if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
+                println!("{}", e);
+                process::exit(1);
+            }
+            let config = config.unwrap();
+            handle_check_installs(&config).await;
+
+            if let Err(e) = handle_warnings(&config) {
+                eprintln!("An error occurred during static analysis:\n{}", e);
+                process::exit(1);
+            }
+
+            for &b_type in config.project.build_type.iter() {
+                println!("BuildType: {:?}", b_type);
+
+                let comp_cmd = build_compilation_cmd(&profile, &config, b_type);
+
+                match comp_cmd {
+                    Ok(v) => {
+                        println!("{}\n", v.join(" "));
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "An error occurred while building the project (build mode {:?}):\n{}",
+                            b_type, e
+                        );
+                        process::exit(1);
+                    }
+                }
+            }
+
+        }
         cli::Commands::Test { tests } => {
             if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
                 println!("{}", e);
@@ -320,7 +354,7 @@ fn handle_warnings(config: &Config) -> Result<Vec<safety::Warning>> {
     Ok(warnings)
 }
 
-fn handle_build(profile: &str, config: &Config, build_type: config::BuildType) -> Result<()> {
+fn build_compilation_cmd(profile: &str, config: &Config, build_type: config::BuildType) -> Result<Vec<String>> {
     if !profile.starts_with("--") {
         eprintln!("Error: profile must start with `--`");
         process::exit(1);
@@ -355,6 +389,12 @@ fn handle_build(profile: &str, config: &Config, build_type: config::BuildType) -
         &opt_flags,
         build_type,
     )?;
+
+    Ok(compilation_cmd)
+}
+
+fn handle_build(profile: &str, config: &Config, build_type: config::BuildType) -> Result<()> {
+    let compilation_cmd = build_compilation_cmd(profile, config, build_type)?;
 
     #[cfg(debug_assertions)]
     {

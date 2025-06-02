@@ -575,7 +575,7 @@ fn handle_gen_headers(config: &Config, mut files: Option<Vec<String>>) -> Result
 
                 let s = lexer_c::Token::tokens_to_string(func);
                 headers.push_str(s.trim());
-                headers.push_str(";\n");
+                headers.push_str(";\n\n");
             }
             headers.push('\n');
             headers.push_str(&format!("#endif // {}_H", raw_name.to_uppercase()));

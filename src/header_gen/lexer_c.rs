@@ -468,7 +468,12 @@ pub fn get_includes<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
         let mut next_idx = idx;
         if let Token::Comment(_) = tokens[next_idx] {
             skip_to_end_comment(tokens, &mut next_idx);
+            if next_idx >= tokens.len() {
+                break
+            }
         }
+
+
 
         if let Token::HashTag = tokens[next_idx] {
             let next_nwt = next_non_whitespace_token(&tokens[next_idx..]);
@@ -764,8 +769,10 @@ fn skip_to_end_comment(tokens: &[Token], idx: &mut usize) {
     );
 
     while
+        *idx < tokens.len() && (
         std::mem::discriminant(&tokens[*idx]) == std::mem::discriminant(&Token::Comment("")) ||
         tokens[*idx] == Token::NewLine
+        )
     {
         if tokens[*idx] == Token::NewLine && tokens[*idx + 1] == Token::NewLine {
             break;

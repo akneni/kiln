@@ -1,4 +1,4 @@
-use crate::config::{self, Config, Dependency};
+use crate::config::{self, Config, KilnBrick};
 use crate::constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE};
 use crate::packaging::kiln_package::KilnPackageConfig;
 
@@ -143,7 +143,7 @@ async fn find_tags(owner: &str, repo_name: &str) -> Result<Vec<Tag>, PkgError> {
 
 /// Installs a package in the glocal cache. does NOT create a kiln-package.toml file
 /// If the package already exists locally, it does nothing
-async fn install_globally(package: &Dependency, tag: &Tag) -> Result<(), PkgError> {
+async fn install_globally(package: &KilnBrick, tag: &Tag) -> Result<(), PkgError> {
     let package_dir = package.get_global_path();
     let tarball_tmp_name = format!(
         "{}_{}_{}",
@@ -243,7 +243,7 @@ pub async fn resolve_adding_package(
         for f in futures {
             let (chain_deps, cfg) = f.await??;
             let kiln_dcf_deps = config.dependency.as_mut().unwrap();
-            config::Dependency::add_dependency(kiln_dcf_deps, cfg);
+            config::KilnBrick::add_dependency(kiln_dcf_deps, cfg);
             deps.extend(chain_deps);
         }
     }
@@ -257,7 +257,7 @@ async fn add_package(
     owner: String,
     proj_name: String,
     version: Option<String>,
-) -> Result<(Vec<[String; 3]>, Dependency), PkgError> {
+) -> Result<(Vec<[String; 3]>, KilnBrick), PkgError> {
     // TODO: Add a better error message by providing the link to see all the github repo's tags
     let repo_name = format!("https://github.com/{}/{}", owner, proj_name);
 
@@ -289,7 +289,7 @@ async fn add_package(
         tag = tags.last().unwrap();
     }
 
-    let pkg = Dependency::new(&owner, &proj_name, &tag.name);
+    let pkg = KilnBrick::new(&owner, &proj_name, &tag.name);
 
     install_globally(&pkg, &tag).await?;
 
@@ -370,7 +370,7 @@ pub fn check_pkgs<'a>(config: &'a Config) -> Vec<[String; 3]> {
 }
 
 fn check_pkg_h(
-    dep: &Dependency,
+    dep: &KilnBrick,
     output: &mut Vec<[String; 3]>,
     pkgs_visited: &mut HashSet<String>,
 ) {

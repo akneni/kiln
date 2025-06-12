@@ -16,7 +16,7 @@ use crate::{
 pub struct Config {
     pub project: Project,
     pub build_options: BuildOptions,
-    pub dependency: Option<Vec<Dependency>>,
+    pub dependency: Option<Vec<KilnBrick>>,
 }
 
 impl Config {
@@ -178,8 +178,9 @@ impl BuildOptions {
     }
 }
 
+/// A Brick is a kiln package
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Dependency {
+pub struct KilnBrick {
     pub uri: String,
     pub version: String,
     pub include_dir: Option<String>,
@@ -188,12 +189,12 @@ pub struct Dependency {
     pub static_lib_dir: Option<String>,
 }
 
-impl Dependency {
+impl KilnBrick {
     pub fn new(owner: &str, repo_name: &str, version: &str) -> Self {
-        Dependency {
+        KilnBrick {
             uri: format!("https://github.com/{}/{}.git", owner, repo_name),
             version: version.to_string(),
-            ..Dependency::default()
+            ..KilnBrick::default()
         }
     }
 
@@ -269,7 +270,7 @@ impl Dependency {
 
     /// Adds a dependency if it doesn't already exist
     /// Returns true if the dependency already exists
-    pub fn add_dependency(deps: &mut Vec<Dependency>, new_dep: Dependency) -> bool {
+    pub fn add_dependency(deps: &mut Vec<KilnBrick>, new_dep: KilnBrick) -> bool {
         for dep in deps.iter() {
             if *dep == new_dep {
                 return true;
@@ -282,7 +283,7 @@ impl Dependency {
 
 /// Computes weak equality. Evaluates to true if the github uri has the same
 /// project name and owner
-impl PartialEq for Dependency {
+impl PartialEq for KilnBrick {
     fn eq(&self, other: &Self) -> bool {
         self.owner() == other.owner() && self.repo_name() == other.repo_name()
     }

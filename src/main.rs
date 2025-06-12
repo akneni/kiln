@@ -227,7 +227,7 @@ async fn main() {
                         );
                         process::exit(1);
                     }
-                }
+                    }
             }
 
         }
@@ -568,14 +568,24 @@ fn handle_gen_headers(config: &Config, mut files: Option<Vec<String>>) -> Result
             headers.push('\n');
 
             for &func in &fn_defs {
-                // turn `inline void XXX() {}` in .c into `extern inline void XXX();` in .h
-                if let lexer_c::Token::Object("inline") = func[0] {
-                    headers.push_str("extern ");
+                let inline_idx = func.iter()
+                    .enumerate()
+                    .find(|&i| *(i.1) == lexer_c::Token::Object("inline"));
+                
+                if let Some((inline_idx, _)) = inline_idx {
+                    // turn `inline void XXX() {}` in .c into `extern inline void XXX();` in .h
+                    let mut func = func.to_vec();
+                    func.insert(inline_idx, lexer_c::Token::Space);
+                    func.insert(inline_idx, lexer_c::Token::Object("extern"));
+                    
+                    let s = lexer_c::Token::tokens_to_string(&func);
+                    headers.push_str(s.trim());
+                    headers.push_str(";\n\n");
+                } else {
+                    let s = lexer_c::Token::tokens_to_string(func);
+                    headers.push_str(s.trim());
+                    headers.push_str(";\n\n");
                 }
-
-                let s = lexer_c::Token::tokens_to_string(func);
-                headers.push_str(s.trim());
-                headers.push_str(";\n");
             }
             headers.push('\n');
             headers.push_str(&format!("#endif // {}_H", raw_name.to_uppercase()));

@@ -394,7 +394,7 @@ fn build_compilation_cmd(profile: &str, config: &Config, build_type: config::Bui
 }
 
 fn handle_build(profile: &str, config: &Config, build_type: config::BuildType) -> Result<()> {
-    let compilation_cmd = build_compilation_cmd(profile, config, build_type)?;
+    let mut compilation_cmd = build_compilation_cmd(profile, config, build_type)?;
 
     #[cfg(debug_assertions)]
     {
@@ -409,6 +409,14 @@ fn handle_build(profile: &str, config: &Config, build_type: config::BuildType) -
             .join("obj"),
         _ => env::current_dir().unwrap(),
     };
+
+    compilation_cmd = compilation_cmd.into_iter().map(|word| {
+        if word.starts_with("/") || word.starts_with("-I/") {
+            format!("\"{}\"", word)
+        } else {
+            word
+        }
+    }).collect();
 
     let command = compilation_cmd.join(" ");
     let (shell, flag) = if cfg!(target_os = "windows") {

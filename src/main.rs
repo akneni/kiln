@@ -577,7 +577,7 @@ fn handle_gen_headers(config: &Config, mut files: Option<Vec<String>>) -> Result
                     let mut func = func.to_vec();
                     func.insert(inline_idx, lexer_c::Token::Space);
                     func.insert(inline_idx, lexer_c::Token::Object("extern"));
-                    
+
                     let s = lexer_c::Token::tokens_to_string(&func);
                     headers.push_str(s.trim());
                     headers.push_str(";\n\n");

@@ -468,6 +468,9 @@ pub fn get_includes<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
         let mut next_idx = idx;
         if let Token::Comment(_) = tokens[next_idx] {
             skip_to_end_comment(tokens, &mut next_idx);
+            if next_idx >= tokens.len() {
+                break
+            }
         }
 
         if next_idx >= tokens.len() {

@@ -1,6 +1,6 @@
-use crate::config::{self, Config, KilnBrick};
+use crate::config::{self, Config, KilnPot};
 use crate::constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE};
-use crate::packaging::kiln_package::KilnPackageConfig;
+use crate::packaging::pot::PotConfig;
 
 use std::collections::HashSet;
 use std::fmt::Debug;
@@ -143,7 +143,7 @@ async fn find_tags(owner: &str, repo_name: &str) -> Result<Vec<Tag>, PkgError> {
 
 /// Installs a package in the glocal cache. does NOT create a kiln-package.toml file
 /// If the package already exists locally, it does nothing
-async fn install_globally(package: &KilnBrick, tag: &Tag) -> Result<(), PkgError> {
+async fn install_globally(package: &KilnPot, tag: &Tag) -> Result<(), PkgError> {
     let package_dir = package.get_global_path();
     let tarball_tmp_name = format!(
         "{}_{}_{}",
@@ -243,7 +243,7 @@ pub async fn resolve_adding_package(
         for f in futures {
             let (chain_deps, cfg) = f.await??;
             let kiln_dcf_deps = config.dependency.as_mut().unwrap();
-            config::KilnBrick::add_dependency(kiln_dcf_deps, cfg);
+            config::KilnPot::add_dependency(kiln_dcf_deps, cfg);
             deps.extend(chain_deps);
         }
     }
@@ -257,7 +257,7 @@ async fn add_package(
     owner: String,
     proj_name: String,
     version: Option<String>,
-) -> Result<(Vec<[String; 3]>, KilnBrick), PkgError> {
+) -> Result<(Vec<[String; 3]>, KilnPot), PkgError> {
     // TODO: Add a better error message by providing the link to see all the github repo's tags
     let repo_name = format!("https://github.com/{}/{}", owner, proj_name);
 
@@ -289,7 +289,7 @@ async fn add_package(
         tag = tags.last().unwrap();
     }
 
-    let pkg = KilnBrick::new(&owner, &proj_name, &tag.name);
+    let pkg = KilnPot::new(&owner, &proj_name, &tag.name);
 
     install_globally(&pkg, &tag).await?;
 
@@ -308,7 +308,7 @@ async fn add_package(
         std::io::stdin().read_line(&mut stdin_buf)?;
         include_dir = stdin_buf.trim().trim_matches('/').to_string();
 
-        let pkg_cfg = KilnPackageConfig::new(include_dir, source_dir);
+        let pkg_cfg = PotConfig::new(include_dir, source_dir);
         let pkg_cfg_str = toml::to_string_pretty(&pkg_cfg)?;
 
         let out_path = pkg.get_global_path().join(PACKAGE_CONFIG_FILE);
@@ -370,7 +370,7 @@ pub fn check_pkgs<'a>(config: &'a Config) -> Vec<[String; 3]> {
 }
 
 fn check_pkg_h(
-    dep: &KilnBrick,
+    dep: &KilnPot,
     output: &mut Vec<[String; 3]>,
     pkgs_visited: &mut HashSet<String>,
 ) {

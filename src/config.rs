@@ -6,7 +6,7 @@ use std::{
 };
 use toml;
 
-use crate::packaging::kiln_package::KilnPackageConfig;
+use crate::packaging::pot::PotConfig;
 use crate::{
     constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE, PACKAGE_DIR},
     package_manager, utils,
@@ -16,7 +16,7 @@ use crate::{
 pub struct Config {
     pub project: Project,
     pub build_options: BuildOptions,
-    pub dependency: Option<Vec<KilnBrick>>,
+    pub dependency: Option<Vec<KilnPot>>,
 }
 
 impl Config {
@@ -180,7 +180,7 @@ impl BuildOptions {
 
 /// A Brick is a kiln package
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct KilnBrick {
+pub struct KilnPot {
     pub uri: String,
     pub version: String,
     pub include_dir: Option<String>,
@@ -189,12 +189,12 @@ pub struct KilnBrick {
     pub static_lib_dir: Option<String>,
 }
 
-impl KilnBrick {
+impl KilnPot {
     pub fn new(owner: &str, repo_name: &str, version: &str) -> Self {
-        KilnBrick {
+        KilnPot {
             uri: format!("https://github.com/{}/{}.git", owner, repo_name),
             version: version.to_string(),
-            ..KilnBrick::default()
+            ..KilnPot::default()
         }
     }
 
@@ -239,7 +239,7 @@ impl KilnBrick {
 
         let pgk_path = p.join(PACKAGE_CONFIG_FILE);
         if pgk_path.exists() {
-            let pkg_cfg = KilnPackageConfig::from(&pgk_path)?;
+            let pkg_cfg = PotConfig::from(&pgk_path)?;
             return Ok(Some(p.join(&pkg_cfg.metadata.include_dir)));
         }
 
@@ -261,7 +261,7 @@ impl KilnBrick {
 
         let pgk_path = p.join(PACKAGE_CONFIG_FILE);
         if pgk_path.exists() {
-            let pkg_cfg = KilnPackageConfig::from(&pgk_path)?;
+            let pkg_cfg = PotConfig::from(&pgk_path)?;
             return Ok(Some(p.join(&pkg_cfg.metadata.source_dir)));
         }
 
@@ -270,7 +270,7 @@ impl KilnBrick {
 
     /// Adds a dependency if it doesn't already exist
     /// Returns true if the dependency already exists
-    pub fn add_dependency(deps: &mut Vec<KilnBrick>, new_dep: KilnBrick) -> bool {
+    pub fn add_dependency(deps: &mut Vec<KilnPot>, new_dep: KilnPot) -> bool {
         for dep in deps.iter() {
             if *dep == new_dep {
                 return true;
@@ -283,7 +283,7 @@ impl KilnBrick {
 
 /// Computes weak equality. Evaluates to true if the github uri has the same
 /// project name and owner
-impl PartialEq for KilnBrick {
+impl PartialEq for KilnPot {
     fn eq(&self, other: &Self) -> bool {
         self.owner() == other.owner() && self.repo_name() == other.repo_name()
     }

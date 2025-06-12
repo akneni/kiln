@@ -1,4 +1,4 @@
-use crate::config::{self, KilnBrick};
+use crate::config::{self, KilnPot};
 use crate::utils;
 use crate::utils::Language;
 use crate::{config::Config, constants::CONFIG_FILE};
@@ -291,7 +291,7 @@ pub fn validate_proj_repo(path: &Path) -> Result<()> {
 
 /// Helper function that recursivly links all the source code files
 fn link_dep_files_h(
-    dep: &KilnBrick,
+    dep: &KilnPot,
     language: Language,
     out_buffer: &mut Vec<String>,
     packages: &mut HashMap<String, String>,
@@ -365,7 +365,7 @@ fn link_dep_files_h(
 
 /// Helper function that recursivly links all the header file directories
 fn link_dep_headers_h(
-    dep: &KilnBrick,
+    dep: &KilnPot,
     out_buffer: &mut Vec<String>,
     packages: &mut HashSet<String>,
 ) -> Result<()> {

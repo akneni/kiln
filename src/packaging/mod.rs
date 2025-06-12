@@ -1,2 +1,2 @@
-pub mod kiln_package;
+pub mod pot;
 pub mod package_manager;

@@ -3,11 +3,11 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KilnPackageConfig {
+pub struct PotConfig {
     pub metadata: Metadata,
 }
 
-impl KilnPackageConfig {
+impl PotConfig {
     pub fn new(include_dir: String, source_dir: String) -> Self {
         let metadata = Metadata {
             include_dir,
@@ -15,7 +15,7 @@ impl KilnPackageConfig {
         };
         Self { metadata }
     }
-
+    
     pub fn from(path: impl AsRef<Path>) -> Result<Self> {
         let s = fs::read_to_string(path)?;
         let c: Self = toml::from_str(&s)?;

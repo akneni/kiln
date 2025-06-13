@@ -8,7 +8,7 @@ If you're familiar with Rust's Cargo or Python's Poetry, you'll feel right at ho
 - **Convenience**: Never write a makefile or link 20 files in a single compilation command again.
 - **Security**: From better compiler flag defaults, to static analysis and valgrind integration, Kiln can help you write safer C/C++ code. 
 - **Productivity**: Spend more time writing code and let Kiln take care of generating header files and linking libraries. 
-- **Extensibility**: Extend your code with pots, or packages that you can install by simple running `kiln add <git url>`. 
+- **Extensibility**: Extend your code with ingots, or packages that you can install by simple running `kiln add <git url>`. 
 
 ## Build from Source
 - Kiln is only officially supported for Linux, but should also work mostly fine on Mac OS and Windows. 
@@ -40,7 +40,7 @@ Kiln will:
 - Link necessary libraries.
 - Output the compiled binary to the `build/` directory.
 
-**Installing Pots:** Add packages to your code
+**Installing Ingots:** Add packages to your code
 ```bash
 kiln add https://github.com/akneni/kiln_string.git
 ```

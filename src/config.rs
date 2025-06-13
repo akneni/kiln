@@ -2,21 +2,60 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    path::{Path, PathBuf},
+    path::{Path, PathBuf}, process,
 };
 use toml;
 
-use crate::packaging::pot::PotConfig;
-use crate::{
-    constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE, PACKAGE_DIR},
-    package_manager, utils,
-};
+use crate::constants::{CONFIG_FILE, PACKAGE_DIR};
+use crate::package_manager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub project: Project,
     pub build_options: BuildOptions,
-    pub dependency: Option<Vec<KilnPot>>,
+    pub dependency: Option<Vec<KilnIngot>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Project {
+    pub name: String,
+    pub version: String,
+    pub language: String,
+    pub build_type: Vec<BuildType>,
+    pub src_dir: Vec<String>,
+    pub include_dir: Vec<String>,
+    pub staticlib_dir: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildOptions {
+    debug_flags: Vec<String>,
+    release_flags: Vec<String>,
+    shared_flags: Vec<String>,
+    compiler_path: Option<String>,
+    standard: Option<String>,
+    kiln_static_analysis: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KilnIngot {
+    pub uri: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum BuildType {
+    #[allow(non_camel_case_types)]
+    exe,
+
+    #[allow(non_camel_case_types)]
+    ingot,
+
+    #[allow(non_camel_case_types)]
+    static_library,
+
+    #[allow(non_camel_case_types)]
+    dynamic_library,
 }
 
 impl Config {
@@ -25,11 +64,13 @@ impl Config {
             name: proj_name.to_string(),
             version: "0.0.1".to_string(),
             language: "c".to_string(),
-            build_type: vec![BuildType::Exe],
+            build_type: vec![BuildType::exe],
+            src_dir: vec!["src".to_string()],
+            include_dir: vec!["include".to_string()],
+            staticlib_dir: None,
         };
 
-        // No posibility of this failing
-        let build_options = BuildOptions::from(&project).unwrap();
+        let build_options = BuildOptions::default();
 
         Config {
             project,
@@ -48,7 +89,7 @@ impl Config {
         if build_types.len() == 0 {
             return Err(anyhow!("Project must have a build type"));
         }
-        if build_types.contains(&BuildType::Exe) && build_types.len() > 1 {
+        if build_types.contains(&BuildType::exe) && build_types.len() > 1 {
             return Err(anyhow!(
                 "Project cannot be executable in addition to other types"
             ));
@@ -66,20 +107,25 @@ impl Config {
     // ========== Getter methods for the build options ==================
 
     pub fn get_compiler_path(&self) -> String {
-        self.build_options.compiler_path.clone()
+        match &self.build_options.compiler_path {
+            Some(p) => {
+                p.clone()
+            }
+            None => {
+                match self.project.language.as_str() {
+                    "c" => "gcc".to_string(),
+                    "c++" => "g++".to_string(),
+                    "cuda" => "nvcc".to_string(),
+                    _ => {
+                        eprintln!("Language `{}` is not supported", self.project.language.as_str());
+                        process::exit(1);
+                    }
+                }
+            }
+        }
     }
 
-    pub fn get_src_dir(&self) -> String {
-        let default = "src".to_string();
-        self.build_options.src_dir.clone().unwrap_or(default)
-    }
-
-    pub fn get_include_dir(&self) -> String {
-        let default = "include".to_string();
-        self.build_options.include_dir.clone().unwrap_or(default)
-    }
-
-    pub fn get_kiln_static_analysis(&self) -> bool {
+    pub fn kiln_static_analysis(&self) -> bool {
         self.build_options.kiln_static_analysis.unwrap_or(true)
     }
 
@@ -87,114 +133,45 @@ impl Config {
         self.build_options.standard.clone()
     }
 
-    pub fn get_main_filepath(&self) -> String {
-        if let Some(file) = self.build_options.main_filepath.as_ref() {
-            return file.clone();
-        }
-        let filename = match self.project.language.as_str() {
-            "c" => "main.c".to_string(),
-            "cpp" => "main.cpp".to_string(),
-            "cuda" => "main.cu".to_string(),
-            _ => {
-                eprintln!("`{}` is not a supported language", self.project.language);
-                std::process::exit(1);
-            }
-        };
-        format!("{}/{}", self.get_src_dir(), filename)
-    }
-
-    pub fn get_flags(&self, compilation_profile: &str) -> Option<&Vec<String>> {
+    pub fn get_flags(&self, compilation_profile: &str) -> Vec<String> {
+        let mut comp_flags = vec![];
         if compilation_profile == "debug" {
-            return Some(&self.build_options.debug_flags);
+            comp_flags = self.build_options.debug_flags.clone();
         } else if compilation_profile == "release" {
-            return Some(&self.build_options.release_flags);
+            comp_flags = self.build_options.release_flags.clone()
         }
-        None
+        comp_flags.extend_from_slice(&self.build_options.shared_flags);
+
+        comp_flags
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Project {
-    pub name: String,
-    pub version: String,
-    pub language: String,
-    pub build_type: Vec<BuildType>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub enum BuildType {
-    Exe,
-    KilnPackage,
-    StaticLibrary,
-    DynamicLibrary,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BuildOptions {
-    compiler_path: String,
-    debug_flags: Vec<String>,
-    release_flags: Vec<String>,
-    src_dir: Option<String>,
-    include_dir: Option<String>,
-    standard: Option<String>,
-    kiln_static_analysis: Option<bool>,
-    main_filepath: Option<String>,
-}
-
-impl BuildOptions {
-    fn from(project: &Project) -> Result<Self> {
+impl Default for BuildOptions {
+    fn default() -> Self {
         let debug_flags = vec![
             "-g".to_string(),
             "-O0".to_string(),
-            "-Wall".to_string(),
             "-fsanitize=undefined".to_string(),
         ];
-        let release_flags = vec!["-Wall".to_string(), "-O3".to_string()];
+        let release_flags = vec!["-O3".to_string()];
+        let shared_flags= vec!["-Wall".to_string()];
 
-        let mut b_config = BuildOptions {
+        BuildOptions {
             standard: None,
             debug_flags,
             release_flags,
-            compiler_path: "placeholder".to_string(),
-            src_dir: None,
-            include_dir: None,
+            shared_flags,
+            compiler_path: None,
             kiln_static_analysis: None,
-            main_filepath: None,
-        };
-
-        match project.language.as_str() {
-            "c" => {
-                b_config.compiler_path = "gcc".to_string();
-            }
-            "cpp" => {
-                b_config.compiler_path = "g++".to_string();
-            }
-            "cuda" => {
-                b_config.compiler_path = "nvcc".to_string();
-            }
-            _ => return Err(anyhow!("language {} not supported", project.language)),
         }
-        Ok(b_config)
     }
 }
 
-/// A Brick is a kiln package
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct KilnPot {
-    pub uri: String,
-    pub version: String,
-    pub include_dir: Option<String>,
-    pub source_dir: Option<String>,
-    pub shared_object_dir: Option<String>,
-    pub static_lib_dir: Option<String>,
-}
-
-impl KilnPot {
+impl KilnIngot {
     pub fn new(owner: &str, repo_name: &str, version: &str) -> Self {
-        KilnPot {
+        KilnIngot {
             uri: format!("https://github.com/{}/{}.git", owner, repo_name),
             version: version.to_string(),
-            ..KilnPot::default()
         }
     }
 
@@ -202,7 +179,7 @@ impl KilnPot {
         let (owner, _repo) = package_manager::parse_github_uri(&self.uri).unwrap();
         owner
     }
-
+    
     pub fn repo_name(&self) -> &str {
         let (_owner, repo) = package_manager::parse_github_uri(&self.uri).unwrap();
         repo
@@ -224,53 +201,19 @@ impl KilnPot {
         Ok(Some(cfg))
     }
 
-    pub fn get_include_dir(&self) -> Result<Option<PathBuf>> {
+    pub fn include_dir(&self) -> PathBuf {
         let p = self.get_global_path();
-
-        if let Some(include_dir) = &self.include_dir {
-            return Ok(Some(utils::join_rel_path(&p, &include_dir)));
-        }
-
-        let config_path = p.join(CONFIG_FILE);
-        if config_path.exists() {
-            let config = Config::from(&config_path)?;
-            return Ok(Some(p.join(&config.get_include_dir())));
-        }
-
-        let pgk_path = p.join(PACKAGE_CONFIG_FILE);
-        if pgk_path.exists() {
-            let pkg_cfg = PotConfig::from(&pgk_path)?;
-            return Ok(Some(p.join(&pkg_cfg.metadata.include_dir)));
-        }
-
-        Ok(None)
+        p.join("build").join("ingot")
     }
 
-    pub fn get_source_dir(&self) -> Result<Option<PathBuf>> {
+    pub fn get_source_dir(&self) -> PathBuf {
         let p = self.get_global_path();
-
-        if let Some(source_dir) = &self.source_dir {
-            return Ok(Some(utils::join_rel_path(&p, &source_dir)));
-        }
-
-        let config_path = p.join(CONFIG_FILE);
-        if config_path.exists() {
-            let config = Config::from(&config_path)?;
-            return Ok(Some(p.join(&config.get_src_dir())));
-        }
-
-        let pgk_path = p.join(PACKAGE_CONFIG_FILE);
-        if pgk_path.exists() {
-            let pkg_cfg = PotConfig::from(&pgk_path)?;
-            return Ok(Some(p.join(&pkg_cfg.metadata.source_dir)));
-        }
-
-        Ok(None)
+        p.join("build").join("ingot")
     }
 
     /// Adds a dependency if it doesn't already exist
     /// Returns true if the dependency already exists
-    pub fn add_dependency(deps: &mut Vec<KilnPot>, new_dep: KilnPot) -> bool {
+    pub fn add_dependency(deps: &mut Vec<KilnIngot>, new_dep: KilnIngot) -> bool {
         for dep in deps.iter() {
             if *dep == new_dep {
                 return true;
@@ -283,7 +226,7 @@ impl KilnPot {
 
 /// Computes weak equality. Evaluates to true if the github uri has the same
 /// project name and owner
-impl PartialEq for KilnPot {
+impl PartialEq for KilnIngot {
     fn eq(&self, other: &Self) -> bool {
         self.owner() == other.owner() && self.repo_name() == other.repo_name()
     }

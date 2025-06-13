@@ -25,7 +25,7 @@ pub enum Commands {
     },
     GenHeaders {
         #[arg()]
-        args: Option<Vec<String>>
+        args: Vec<String>
     },
     Add {
         dep_uri: String,

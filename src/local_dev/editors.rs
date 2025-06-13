@@ -29,7 +29,7 @@ pub fn handle_editor_includes(config: &Config, proj_dir: impl AsRef<Path>) -> Re
 
     if let Some(deps) = config.dependency.as_ref() {
         for dep in deps {
-            if let Some(s) = dep.get_include_dir()? {
+            if let Some(s) = dep.include_dir()? {
                 let s = s.to_str().unwrap().to_string();
                 include_dirs.push(s);
             }

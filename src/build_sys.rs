@@ -1,4 +1,5 @@
-use crate::config::{self, KilnPot};
+use crate::config::{self, KilnIngot};
+use crate::packaging::ingot::IngotMetadata;
 use crate::utils;
 use crate::utils::Language;
 use crate::{config::Config, constants::CONFIG_FILE};
@@ -196,7 +197,7 @@ pub fn full_compilation_cmd(
     let mut build_path = format!("{}/build/{}/{}", cwd, profile, &config.project.name);
 
     match build_type {
-        config::BuildType::DynamicLibrary => {
+        config::BuildType::dynamic_library => {
             let file_ext = match env::consts::OS {
                 "linux" => ".so",
                 "windows" => ".dll",
@@ -210,7 +211,7 @@ pub fn full_compilation_cmd(
 
             command.extend_from_slice(&["-shared".to_string(), "-fPIC".to_string()]);
         }
-        config::BuildType::StaticLibrary => {
+        config::BuildType::static_library => {
             command.push("-c".to_string());
 
             let _ = fs::create_dir_all(&build_path);
@@ -218,7 +219,7 @@ pub fn full_compilation_cmd(
         _ => {}
     }
 
-    if build_type != config::BuildType::StaticLibrary {
+    if build_type != config::BuildType::static_library {
         command.extend_from_slice(&["-o".to_string(), build_path]);
     }
 
@@ -243,7 +244,7 @@ pub fn full_compilation_cmd(
     // Link all the libraries (shared objects like -lm, -lpthread, etc)
     command.extend_from_slice(link_lib);
 
-    if build_type == config::BuildType::StaticLibrary {
+    if build_type == config::BuildType::static_library {
         let output_file = format!("{}/build/{}/{}.a", cwd, profile, &config.project.name);
         let object_dir = format!("{}/build/{}/obj/*.o", cwd, profile);
 
@@ -291,7 +292,7 @@ pub fn validate_proj_repo(path: &Path) -> Result<()> {
 
 /// Helper function that recursivly links all the source code files
 fn link_dep_files_h(
-    dep: &KilnPot,
+    dep: &KilnIngot,
     language: Language,
     out_buffer: &mut Vec<String>,
     packages: &mut HashMap<String, String>,
@@ -365,7 +366,7 @@ fn link_dep_files_h(
 
 /// Helper function that recursivly links all the header file directories
 fn link_dep_headers_h(
-    dep: &KilnPot,
+    dep: &KilnIngot,
     out_buffer: &mut Vec<String>,
     packages: &mut HashSet<String>,
 ) -> Result<()> {
@@ -377,7 +378,7 @@ fn link_dep_headers_h(
         packages.insert(dep_id);
     }
 
-    let include_dir = match dep.get_include_dir()? {
+    let include_dir = match dep.include_dir()? {
         Some(s) => s,
         None => return Err(anyhow!("{} has an ambiguous include dir", &dep.uri)),
     };
@@ -405,3 +406,8 @@ fn link_dep_headers_h(
     Ok(())
 }
 
+#[derive(Debug)]
+struct ProjBuilder<'a> {
+    config: &'a Config,
+    ingots: HashSet<String>,
+}

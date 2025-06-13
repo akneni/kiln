@@ -175,7 +175,7 @@ async fn main() {
             }
 
             let config = config.unwrap();
-            if !config.project.build_type.contains(&config::BuildType::Exe) {
+            if !config.project.build_type.contains(&config::BuildType::exe) {
                 eprintln!("Cannot run a non executable project");
                 process::exit(1);
             }
@@ -186,7 +186,7 @@ async fn main() {
                 eprintln!("An error occurred during static analysis:\n{}", e);
                 process::exit(1);
             }
-            if let Err(e) = handle_build(&profile, &config, config::BuildType::Exe) {
+            if let Err(e) = handle_build(&profile, &config, config::BuildType::exe) {
                 eprintln!("An error occurred while building the project:\n{}", e);
                 process::exit(1);
             }
@@ -332,7 +332,7 @@ async fn main() {
 
 /// Returns true if there were warnings and false if there was no warnings.
 fn handle_warnings(config: &Config) -> Result<Vec<safety::Warning>> {
-    if !config.get_kiln_static_analysis() {
+    if !config.kiln_static_analysis() {
         return Ok(vec![]);
     }
 
@@ -402,7 +402,7 @@ fn handle_build(profile: &str, config: &Config, build_type: config::BuildType) -
     }
 
     let build_dir = match build_type {
-        config::BuildType::StaticLibrary => env::current_dir()
+        config::BuildType::static_library => env::current_dir()
             .unwrap()
             .join("build")
             .join(&profile[2..])
@@ -479,144 +479,131 @@ fn handle_execution(
     Ok(())
 }
 
-fn handle_gen_headers(config: &Config, mut files: Option<Vec<String>>) -> Result<()> {
+fn handle_gen_headers(config: &Config, mut files: Vec<String>) -> Result<()> {
     let cwd = env::current_dir()?;
-    let src_dir = config.get_src_dir();
-    let inc_dir = config.get_include_dir();
+    let src_dirs = &config.project.src_dir;
+    let inc_dir = &config.project.src_dir;
 
-    let src_dir = cwd.join(src_dir);
-    let inc_dir = cwd.join(inc_dir);
+    let inc_dir = cwd.join("include");
 
-    files.as_mut().map(|v| {
-        for i in 0..v.len() {
-            let idx = v[i].rfind('/');
-            if let Some(idx) = idx {
-                v[i] = v[i][(idx+1)..].to_string();
-            }
+    for i in 0..files.len() {
+        let idx = files[i].rfind('/');
+        if let Some(idx) = idx {
+            files[i] = files[i][(idx+1)..].to_string();
+        }
+    }
+
+    for file in &files {
+        let (raw_name, file_ext) = file.rsplit_once(".").unwrap();
+        let filepath = cwd.join(file);
+
+        if raw_name == "main" {
+            continue;
+        }
+        if matches!(file_ext, "cpp" | "cuda") {
+            println!("WARNING: header gen for .{} files are not supported", file_ext);
+        }
+
+        let header_name = format!("{}.h", raw_name);
+
+        let code = fs::read_to_string(&filepath)?;
+        let tokens = lexer_c::tokenize(&code)?;
+
+        let code_h = fs::read_to_string(inc_dir.join(&header_name)).unwrap_or("".to_string());
+        let tokens_h = lexer_c::tokenize(&code_h)?;
+
+        let mut defines_h = lexer_c::get_defines(&tokens_h);
+        let mut udts_h = lexer_c::get_udts(&tokens_h);
+        let mut includes_h = lexer_c::get_includes(&tokens_h);
+
+        let fn_defs = lexer_c::get_fn_def(&tokens);
+        let includes = lexer_c::get_includes(&tokens);
+        let defines = lexer_c::get_defines(&tokens);
+        let udts = lexer_c::get_udts(&tokens);
+
+        // Ensure headerfiles don't include themselves
+        let includes = header_gen::filter_out_includes(&includes, raw_name);
+
+        // Skip the first definition to skip the #ifndef NAME_H #define NAME_H
+        if defines_h.len() > 0 {
+            defines_h.remove(0);
+        }
+
+        let res = header_gen::merge_defines(&mut defines_h, &defines);
+        if let Err(e) = res {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+
+        let res = header_gen::merge_udts(&mut udts_h, &udts);
+        if let Err(e) = res {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+
+        header_gen::merge_includes(&mut includes_h, &includes);
+
+        let mut headers = String::new();
+
+        headers.push_str(&format!("#ifndef {}_H\n", raw_name.to_uppercase()));
+        headers.push_str(&format!("#define {}_H\n\n", raw_name.to_uppercase()));
+
+        for &inc in &includes {
+            let s = lexer_c::Token::tokens_to_string(inc);
+            headers.push_str(s.trim());
+            headers.push('\n');
+        }
+        headers.push('\n');
+
+        for &def in &defines_h {
+            let s = lexer_c::Token::tokens_to_string(def);
+            headers.push_str(&s);
+            headers.push('\n');
+        }
+        headers.push('\n');
+
+        for &struc in &udts_h {
+            headers.push_str(&lexer_c::Token::tokens_to_string(struc).trim());
+            headers.push_str("\n\n");
+        }
+        headers.push('\n');
+
+        for &func in &fn_defs {
+            let inline_idx = func.iter()
+                .enumerate()
+                .find(|&i| *(i.1) == lexer_c::Token::Object("inline"));
             
-        }
-    });   
+            if let Some((inline_idx, _)) = inline_idx {
+                // turn `inline void XXX() {}` in .c into `extern inline void XXX();` in .h
+                let mut func = func.to_vec();
+                func.insert(inline_idx, lexer_c::Token::Space);
+                func.insert(inline_idx, lexer_c::Token::Object("extern"));
 
-    for file in fs::read_dir(&src_dir).unwrap() {
-        if let Ok(file) = file {
-            let raw_name = file.file_name();
-            let (raw_name, file_ext) = raw_name.to_str().unwrap().rsplit_once(".").unwrap();
-            if raw_name == "main" || file_ext != "c" {
-                continue;
-            }
-
-            if let Some(files) = &files {
-                let full_name = format!("{}.{}", raw_name, file_ext);
-                if !files.contains(&full_name) {
-                    continue;
-                }
-            }
-
-            let header_name = format!("{}.h", raw_name);
-
-            let code = fs::read_to_string(file.path())?;
-            let tokens = lexer_c::tokenize(&code)?;
-
-            let code_h = fs::read_to_string(inc_dir.join(&header_name)).unwrap_or("".to_string());
-            let tokens_h = lexer_c::tokenize(&code_h)?;
-
-            let mut defines_h = lexer_c::get_defines(&tokens_h);
-            let mut udts_h = lexer_c::get_udts(&tokens_h);
-            let mut includes_h = lexer_c::get_includes(&tokens_h);
-
-            let fn_defs = lexer_c::get_fn_def(&tokens);
-            let includes = lexer_c::get_includes(&tokens);
-            let defines = lexer_c::get_defines(&tokens);
-            let udts = lexer_c::get_udts(&tokens);
-
-            // Ensure headerfiles don't include themselves
-            let includes = header_gen::filter_out_includes(&includes, raw_name);
-
-            // Skip the first definition to skip the #ifndef NAME_H #define NAME_H
-            if defines_h.len() > 0 {
-                defines_h.remove(0);
-            }
-
-            let res = header_gen::merge_defines(&mut defines_h, &defines);
-            if let Err(e) = res {
-                eprintln!("Error: {}", e);
-                process::exit(1);
-            }
-
-            let res = header_gen::merge_udts(&mut udts_h, &udts);
-            if let Err(e) = res {
-                eprintln!("Error: {}", e);
-                process::exit(1);
-            }
-
-            header_gen::merge_includes(&mut includes_h, &includes);
-
-            let mut headers = String::new();
-
-            headers.push_str(&format!("#ifndef {}_H\n", raw_name.to_uppercase()));
-            headers.push_str(&format!("#define {}_H\n\n", raw_name.to_uppercase()));
-
-            for &inc in &includes {
-                let s = lexer_c::Token::tokens_to_string(inc);
+                let s = lexer_c::Token::tokens_to_string(&func);
                 headers.push_str(s.trim());
-                headers.push('\n');
+                headers.push_str(";\n\n");
+            } else {
+                let s = lexer_c::Token::tokens_to_string(func);
+                headers.push_str(s.trim());
+                headers.push_str(";\n\n");
             }
-            headers.push('\n');
-
-            for &def in &defines_h {
-                let s = lexer_c::Token::tokens_to_string(def);
-                headers.push_str(&s);
-                headers.push('\n');
-            }
-            headers.push('\n');
-
-            for &struc in &udts_h {
-                headers.push_str(&lexer_c::Token::tokens_to_string(struc).trim());
-                headers.push_str("\n\n");
-            }
-            headers.push('\n');
-
-            for &func in &fn_defs {
-                let inline_idx = func.iter()
-                    .enumerate()
-                    .find(|&i| *(i.1) == lexer_c::Token::Object("inline"));
-                
-                if let Some((inline_idx, _)) = inline_idx {
-                    // turn `inline void XXX() {}` in .c into `extern inline void XXX();` in .h
-                    let mut func = func.to_vec();
-                    func.insert(inline_idx, lexer_c::Token::Space);
-                    func.insert(inline_idx, lexer_c::Token::Object("extern"));
-
-                    let s = lexer_c::Token::tokens_to_string(&func);
-                    headers.push_str(s.trim());
-                    headers.push_str(";\n\n");
-                } else {
-                    let s = lexer_c::Token::tokens_to_string(func);
-                    headers.push_str(s.trim());
-                    headers.push_str(";\n\n");
-                }
-            }
-            headers.push('\n');
-            headers.push_str(&format!("#endif // {}_H", raw_name.to_uppercase()));
-
-            fs::write(inc_dir.join(&header_name), headers)?;
-
-            // Remove definitions from original C file to avoid duplicates
-            let mut exclude_tokens = udts;
-            exclude_tokens.extend_from_slice(&defines);
-
-            let mut new_code = lexer_c::reconstruct_source(&tokens, &exclude_tokens);
-
-            let header_inc_path = format!("\"../include/{}\"", &header_name);
-
-            new_code = header_gen::insert_self_include(new_code, &header_inc_path);
-
-            // let new_file = format!("{}.c.tmp", raw_name);
-            let new_file = format!("{}.c", raw_name);
-            let new_filepath = src_dir.join(&new_file);
-
-            fs::write(new_filepath, new_code).unwrap();
         }
+        headers.push('\n');
+        headers.push_str(&format!("#endif // {}_H", raw_name.to_uppercase()));
+
+        fs::write(inc_dir.join(&header_name), headers)?;
+
+        // Remove definitions from original C file to avoid duplicates
+        let mut exclude_tokens = udts;
+        exclude_tokens.extend_from_slice(&defines);
+
+        let mut new_code = lexer_c::reconstruct_source(&tokens, &exclude_tokens);
+
+        let header_inc_path = format!("\"../include/{}\"", &header_name);
+
+        new_code = header_gen::insert_self_include(new_code, &header_inc_path);
+
+        fs::write(filepath, new_code)?;
     }
     Ok(())
 }
@@ -663,10 +650,9 @@ fn handle_tests(profile: &str, config: &Config, test_file: &str) -> Result<()> {
     build_sys::link_proj_files(&config, &cwd, lang, &mut link_file)
         .map_err(|err| anyhow!("Failed to link source files: {}", err))?;
 
-    let main_file = config.get_main_filepath();
     link_file = link_file
         .into_iter()
-        .filter(|f| !f.ends_with(&main_file))
+        .filter(|f| !f.ends_with("main.c"))
         .collect();
 
     link_file.push(test_file.to_string());
@@ -685,7 +671,7 @@ fn handle_tests(profile: &str, config: &Config, test_file: &str) -> Result<()> {
         &header_dirs,
         &so_dir,
         &opt_flags,
-        config::BuildType::Exe,
+        config::BuildType::exe,
     )?;
 
     let output = process::Command::new(&compilation_cmd[0])

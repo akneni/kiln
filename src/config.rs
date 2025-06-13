@@ -22,9 +22,9 @@ pub struct Project {
     pub version: String,
     pub language: String,
     pub build_type: Vec<BuildType>,
-    pub src_dir: Vec<String>,
-    pub include_dir: Vec<String>,
-    pub staticlib_dir: Option<Vec<String>>,
+    pub src_dirs: Vec<String>,
+    pub include_dirs: Vec<String>,
+    pub staticlib_dirs: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,9 +65,9 @@ impl Config {
             version: "0.0.1".to_string(),
             language: "c".to_string(),
             build_type: vec![BuildType::exe],
-            src_dir: vec!["src".to_string()],
-            include_dir: vec!["include".to_string()],
-            staticlib_dir: None,
+            src_dirs: vec!["src".to_string()],
+            include_dirs: vec!["include".to_string()],
+            staticlib_dirs: None,
         };
 
         let build_options = BuildOptions::default();
@@ -98,13 +98,10 @@ impl Config {
         Ok(config)
     }
 
-    #[allow(unused)]
-    pub fn to_disk(&self, path: &Path) {
-        let s = toml::to_string(&self).unwrap();
-        fs::write(path, s).unwrap();
+    pub fn to_disk(&self, path: impl AsRef<Path>) {
+        let self_str = toml::to_string_pretty(self).unwrap();
+        fs::write(path, &self_str).unwrap();
     }
-
-    // ========== Getter methods for the build options ==================
 
     pub fn get_compiler_path(&self) -> String {
         match &self.build_options.compiler_path {
@@ -143,6 +140,29 @@ impl Config {
         comp_flags.extend_from_slice(&self.build_options.shared_flags);
 
         comp_flags
+    }
+}
+
+impl Project {
+
+    /// Returns the file exension with the `.` in front
+    pub fn language_ext(&self) -> &'static str {
+        match self.language.as_str() {
+            "c" => ".c",
+            "cpp" => ".cpp",
+            "cuda" => ".cu",
+            _ => panic!("Language not supported"),
+        }
+    }
+
+    /// Returns the file exension with the `.` in front
+    pub fn header_ext(&self) -> &'static str {
+        match self.language.as_str() {
+            "c" => ".h",
+            "cpp" => ".hpp",
+            "cuda" => ".cuh",
+            _ => panic!("Language not supported"),
+        }
     }
 }
 
@@ -185,6 +205,7 @@ impl KilnIngot {
         repo
     }
 
+    /// Returns the path to the root directory of the project. 
     pub fn get_global_path(&self) -> PathBuf {
         let (owner, repo) = package_manager::parse_github_uri(&self.uri).unwrap();
 

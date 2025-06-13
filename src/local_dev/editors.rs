@@ -23,16 +23,23 @@ pub fn handle_editor_includes(config: &Config, proj_dir: impl AsRef<Path>) -> Re
         return Ok(());
     }
 
-    let mut include_dirs = vec![
-        "${workspaceFolder}/XXX/**".replace("XXX", config.get_include_dir().trim_matches('/'))
-    ];
+    let mut include_dirs = vec![];
+
+    for include_dir in &config.project.include_dirs {
+        let s =  "${workspaceFolder}/XXX/**".replace("XXX", include_dir);
+        include_dirs.push(s);
+    }
 
     if let Some(deps) = config.dependency.as_ref() {
-        for dep in deps {
-            if let Some(s) = dep.include_dir()? {
-                let s = s.to_str().unwrap().to_string();
-                include_dirs.push(s);
-            }
+        for ingot in deps {
+            let ingot_path = ingot.get_global_path()
+                .join("build");
+
+            let ingot_path = ingot_path.to_str()
+                .unwrap()
+                .to_string();
+
+            include_dirs.push(ingot_path);
         }
     }
 

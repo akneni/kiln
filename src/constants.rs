@@ -8,7 +8,7 @@ use std::{
 
 pub const CONFIG_FILE: &str = "Kiln.toml";
 pub const DEV_ENV_CFG_FILE: &str = "kiln-dev-env-config.toml";
-pub const PACKAGE_CONFIG_FILE: &str = "kiln-package.toml";
+pub const PACKAGE_CONFIG_FILE: &str = "ingot.toml";
 
 pub static DATA_DIR: Lazy<PathBuf> = Lazy::new(|| {
     let paths = [
@@ -55,3 +55,48 @@ pub static SEPARATOR: Lazy<ColoredString> = Lazy::new(|| {
         .blue()
         .bold()
 });
+
+/// File extension for the static library
+pub const STATIC_LIB_FE: &'static str = const {
+    #[cfg(target_os = "linux")] {
+        ".a"
+    }
+
+    #[cfg(target_os = "macos")] {
+        ".a"
+    }
+
+    #[cfg(target_os = "windows")] {
+        ".lib"
+    }
+};
+
+/// File extension for the dynamic library
+pub const DYNAMIC_LIB_FE: &'static str = const {
+    #[cfg(target_os = "linux")] {
+        ".so"
+    }
+
+    #[cfg(target_os = "macos")] {
+        ".dylib"
+    }
+
+    #[cfg(target_os = "windows")] {
+        ".dll"
+    }
+};
+
+/// File extension for an executable file
+pub const EXECUTABLE_FE: &'static str = const {
+    #[cfg(target_os = "linux")] {
+        ""
+    }
+    
+    #[cfg(target_os = "macos")] {
+        ""
+    }
+
+    #[cfg(target_os = "windows")] {
+        ".exe"
+    }
+};

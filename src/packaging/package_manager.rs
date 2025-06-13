@@ -293,45 +293,6 @@ async fn add_package(
 
     install_globally(&pkg, &tag).await?;
 
-    if let None = pkg.include_dir()? {
-        let mut stdin_buf = String::new();
-        let include_dir: String;
-        let source_dir: String;
-
-        println!("Enter the path to the source code files in {} (all files other than .c, .cpp, and .cu will be ignored)", repo_name);
-        std::io::stdout().flush()?;
-        std::io::stdin().read_line(&mut stdin_buf)?;
-        source_dir = stdin_buf.trim().trim_matches('/').to_string();
-
-        println!("Enter the path to the header files in {} (all files other than .h, .hpp, and .cuh will be ignored)", repo_name);
-        std::io::stdout().flush()?;
-        std::io::stdin().read_line(&mut stdin_buf)?;
-        include_dir = stdin_buf.trim().trim_matches('/').to_string();
-
-        let pkg_cfg = IngotMetadata::new(include_dir, source_dir);
-        let pkg_cfg_str = toml::to_string_pretty(&pkg_cfg)?;
-
-        let out_path = pkg.get_global_path().join(PACKAGE_CONFIG_FILE);
-
-        fs::write(out_path, pkg_cfg_str)?;
-    }
-
-    let include_dir = pkg
-        .include_dir()?
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
-
-    let source_dir = pkg.get_source_dir()?.unwrap().to_str().unwrap().to_string();
-
-    let mut pkg = pkg;
-
-    if !pkg.get_global_path().join(CONFIG_FILE).exists() {
-        pkg.include_dir = Some(include_dir);
-        pkg.source_dir = Some(source_dir);
-    }
-
     let mut chain_dep_ids = vec![];
 
     if let Some(mut cfg) = pkg.get_kiln_cfg()? {

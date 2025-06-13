@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{self, Command};
 
 use anyhow::{anyhow, Result};
 use colored::*;
@@ -35,33 +34,6 @@ impl Language {
             Self::Cuda => ".cu",
         }
     }
-}
-
-/// Returns a vector of the included statements
-/// Ex) `["stdio.h", "<math.h>"]`
-pub fn extract_include_statements(path: &Path) -> Vec<String> {
-    let mut path = path.to_path_buf();
-    path.push("src");
-
-    let mut includes = HashSet::new();
-
-    for p in path.read_dir().unwrap() {
-        let p = p.unwrap();
-
-        let text = fs::read_to_string(p.path()).unwrap();
-
-        let local_include = text
-            .split("\n")
-            .map(|s| s.trim())
-            .filter(|s| s.starts_with("#include") && s.ends_with(">"))
-            .map(|s| format!("<{}", s.split_once("<").unwrap().1));
-
-        for inc in local_include {
-            includes.insert(inc);
-        }
-    }
-
-    includes.into_iter().collect()
 }
 
 #[allow(unused)]
@@ -105,5 +77,18 @@ pub fn join_rel_path(abs_path: impl AsRef<Path>, rel_path: &str) -> PathBuf {
     match rel_path {
         "" | "." | "./" => path.to_path_buf(),
         _ => path.join(rel_path),
+    }
+}
+
+pub fn extract_filename<'a>(filepath: &'a str) -> &'a str {
+    let delimiter = if cfg!(target_os = "windows") {
+        "\\"
+    } else {
+        "/"
+    };
+    
+    match filepath.rsplit_once(delimiter) {
+        Some((_, filename)) => filename,
+        None => filepath
     }
 }

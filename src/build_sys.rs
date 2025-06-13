@@ -1,6 +1,7 @@
 use crate::config::{self, KilnIngot};
-use crate::packaging::ingot::IngotMetadata;
-use crate::utils;
+use crate::constants::PACKAGE_CONFIG_FILE;
+use crate::packaging::ingot::{IngotMetadata, Metadata};
+use crate::{constants, utils};
 use crate::utils::Language;
 use crate::{config::Config, constants::CONFIG_FILE};
 
@@ -8,6 +9,31 @@ use anyhow::{anyhow, Result};
 use std::collections::{HashMap, HashSet};
 use std::{env, process};
 use std::{fs, path::Path};
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BuildProfile  {
+    Debug,
+    Release,
+}
+
+impl BuildProfile {
+    pub fn from(s: &str) -> Self {
+        match s {
+            "debug" | "--debug" => Self::Debug,
+            "release" | "--release" => Self::Release,
+            _ => panic!("Invalid build profile"),
+        }
+    }
+
+    pub fn to_str(&self, include_dashes: bool) -> &'static str {
+        match (include_dashes, self) {
+            (true, Self::Release) => "--release",
+            (false, Self::Release) => "release",
+            (true, Self::Debug) => "--debug",
+            (false, Self::Debug) => "debug",
+        }
+    }
+}
 
 pub fn create_project(path: &Path, lang: Language) -> Result<()> {
     let toml_path = path.join(CONFIG_FILE);
@@ -44,40 +70,7 @@ pub fn create_project(path: &Path, lang: Language) -> Result<()> {
     Ok(())
 }
 
-/// Links all the files in the project together
-pub fn link_proj_files(
-    config: &Config,
-    proj_dir: &Path,
-    language: Language,
-    out_buffer: &mut Vec<String>,
-) -> Result<()> {
-    let source_dir = proj_dir.join(config.get_src_dir());
-
-    let source_dir_iter = source_dir.read_dir().map_err(|err| {
-        anyhow!(
-            "Failed to iterate over source dir {:?}c: {}",
-            source_dir,
-            err
-        )
-    })?;
-
-    for file in source_dir_iter {
-        if let Ok(file) = file {
-            let file = file.file_name();
-            let filename = file.to_str().unwrap();
-            if filename.ends_with(language.file_ext()) {
-                let filepath = source_dir.join(filename);
-                let filepath = filepath.to_str().unwrap().to_string();
-
-                out_buffer.push(filepath);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-pub fn link_sys_lib(path: &Path) -> Vec<String> {
+pub fn link_sys_lib(path: &Path) -> Vec<&'static str> {
     let c_lib_mappings = [
         ("<math.h>", "-lm"),                // Math library
         ("<omp.h>", "-fopenmp"),            // OpenMP library
@@ -97,169 +90,17 @@ pub fn link_sys_lib(path: &Path) -> Vec<String> {
         ("<arm_neon.h>", "-mfpu=neon"),     // NEON support for ARM
     ];
 
-    let includes = utils::extract_include_statements(path);
-
     let mut libs = vec![];
-    for (incl, link) in c_lib_mappings {
-        if includes.contains(&incl.to_string()) {
-            libs.push(link.to_string())
-        }
-    }
+
+    // TODO: Get thing working
+    // let includes = utils::extract_include_statements(path);
+    // for (incl, link) in c_lib_mappings {
+    //     if includes.contains(&incl.to_string()) {
+    //         libs.push(link)
+    //     }
+    // }
 
     libs
-}
-
-pub fn link_dep_files(
-    config: &Config,
-    language: Language,
-    out_buffer: &mut Vec<String>,
-) -> Result<()> {
-    let deps = match &config.dependency {
-        Some(d) => d.clone(),
-        None => return Ok(()),
-    };
-
-    // {key: uri, value: version}
-    let mut packages: HashMap<String, String> = HashMap::new();
-
-    // {key: filename, value: uri file is from}
-    let mut filenames: HashMap<String, String> = HashMap::new();
-
-    for dep in deps {
-        link_dep_files_h(&dep, language, out_buffer, &mut packages, &mut filenames)?;
-    }
-
-    Ok(())
-}
-
-pub fn link_dep_headers(config: &Config) -> Result<Vec<String>> {
-    let mut header_dirs = vec![];
-
-    let mut packages: HashSet<String> = HashSet::new();
-
-    if let Some(deps) = &config.dependency {
-        for dep in deps {
-            link_dep_headers_h(dep, &mut header_dirs, &mut packages)?;
-        }
-    }
-
-    Ok(header_dirs)
-}
-
-pub fn link_dep_shared_obj(proj_dir: &Path) -> Result<Option<String>> {
-    let headers_dir = proj_dir.join("dependencies").join("shared_objects");
-    if !headers_dir.exists() {
-        return Ok(None);
-    }
-    let headers_path = headers_dir.to_str().unwrap().to_string();
-    Ok(Some(headers_path))
-}
-
-pub fn opt_flags(profile: &str, config: &Config) -> Result<Vec<String>> {
-    let profile = &profile[2..];
-
-    if let Some(prof) = config.get_flags(profile) {
-        return Ok(prof.clone());
-    }
-    Err(anyhow!(
-        "profile `--{}` does not exist. Choose a different profile or declare it in Kiln.toml",
-        profile
-    ))
-}
-
-/// if `build_type` is `BuildType::StaticLibrary`, then we will need to run the build command in the
-/// `build/XXX/obj` directory
-pub fn full_compilation_cmd(
-    config: &Config,
-    profile: &str,
-    link_file: &Vec<String>,
-    link_lib: &Vec<String>,
-    header_dirs: &Vec<String>,
-    shared_obj_dir: &Option<String>,
-    flags: &Vec<String>,
-    build_type: config::BuildType,
-) -> Result<Vec<String>> {
-    let compiler = config.get_compiler_path();
-    let standard = config.get_standard();
-
-    let mut command = vec![compiler.to_string()];
-    if let Some(standard) = standard {
-        command.push(format!("-std={}", standard));
-    }
-
-    command.extend_from_slice(flags);
-
-    let cwd = env::current_dir()?;
-    let cwd = cwd.as_os_str();
-    let cwd = cwd.to_str().unwrap();
-
-    let profile = &profile[2..];
-    let mut build_path = format!("{}/build/{}/{}", cwd, profile, &config.project.name);
-
-    match build_type {
-        config::BuildType::dynamic_library => {
-            let file_ext = match env::consts::OS {
-                "linux" => ".so",
-                "windows" => ".dll",
-                "mac" => ".dylib",
-                _ => {
-                    eprintln!("OS {} not supported", env::consts::OS);
-                    process::exit(1);
-                }
-            };
-            build_path.push_str(file_ext);
-
-            command.extend_from_slice(&["-shared".to_string(), "-fPIC".to_string()]);
-        }
-        config::BuildType::static_library => {
-            command.push("-c".to_string());
-
-            let _ = fs::create_dir_all(&build_path);
-        }
-        _ => {}
-    }
-
-    if build_type != config::BuildType::static_library {
-        command.extend_from_slice(&["-o".to_string(), build_path]);
-    }
-
-    for header_dir in header_dirs {
-        let tmp: String = format!("-I{}", header_dir);
-        command.push(tmp);
-    }
-
-    if let Some(shared_obj_dir) = shared_obj_dir {
-        let tmp = format!("-L{}", shared_obj_dir);
-        command.push(tmp);
-    }
-
-    // Links all the files in the current project
-    command.extend_from_slice(link_file);
-
-    let main_filepath = config.get_main_filepath();
-    if !main_filepath.starts_with(&config.get_src_dir()) {
-        command.push(main_filepath);
-    }
-
-    // Link all the libraries (shared objects like -lm, -lpthread, etc)
-    command.extend_from_slice(link_lib);
-
-    if build_type == config::BuildType::static_library {
-        let output_file = format!("{}/build/{}/{}.a", cwd, profile, &config.project.name);
-        let object_dir = format!("{}/build/{}/obj/*.o", cwd, profile);
-
-        let second_cmd = [
-            "&&".to_string(),
-            "ar".to_string(),
-            "rcs".to_string(),
-            output_file,
-            object_dir,
-        ];
-
-        command.extend_from_slice(&second_cmd);
-    }
-
-    Ok(command)
 }
 
 pub fn validate_proj_repo(path: &Path) -> Result<()> {
@@ -290,124 +131,272 @@ pub fn validate_proj_repo(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Helper function that recursivly links all the source code files
-fn link_dep_files_h(
-    dep: &KilnIngot,
-    language: Language,
-    out_buffer: &mut Vec<String>,
-    packages: &mut HashMap<String, String>,
-    filenames: &mut HashMap<String, String>,
-) -> Result<()> {
-    let dep_id = format!("{}/{}", dep.owner(), dep.repo_name());
-
-    if let Some(_) = packages.get(&dep_id) {
-        // TODO: Handle version mismatches
-        return Ok(());
-    }
-
-    let source_dir = match dep.get_source_dir()? {
-        Some(s) => s,
-        None => return Err(anyhow!("{} has an ambiguous source dir", &dep.uri)),
-    };
-
-    packages.insert(dep_id, dep.version.clone());
-
-    let valid_ext = match language {
-        Language::C => [".c"].as_slice(),
-        Language::Cpp => [".c", ".cpp"].as_slice(),
-        Language::Cuda => [".c", ".cpp", ".cu"].as_slice(),
-    };
-
-    for file in source_dir.read_dir()? {
-        let file = match file {
-            Ok(r) => r,
-            Err(err) => {
-                dbg!(err);
-                continue;
-            }
-        };
-        if !file.file_type()?.is_file() {
-            continue;
-        }
-
-        let filename = file.file_name().to_str().unwrap().to_string();
-
-        if !valid_ext.iter().any(|&ext| filename.ends_with(ext)) {
-            continue;
-        }
-
-        if let Some(other_uri) = filenames.get(&filename) {
-            eprintln!("Fatal Error: Multiple dependencies have files of the same name:");
-            eprintln!("{}", dep.uri);
-            eprintln!("{}", other_uri);
-            eprintln!("Common File: {}", &filename);
-            std::process::exit(1);
-        }
-
-        filenames.insert(filename.clone(), dep.uri.clone());
-
-        let filepath = source_dir.join(&filename);
-        let filepath = filepath.to_str().unwrap().to_string();
-
-        out_buffer.push(filepath);
-    }
-
-    // Recursivley handle chain dependnecies
-    if let Some(kiln_cfg) = dep.get_kiln_cfg()? {
-        if let Some(chain_deps) = kiln_cfg.dependency {
-            for cd in &chain_deps {
-                link_dep_files_h(cd, language, out_buffer, packages, filenames)?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Helper function that recursivly links all the header file directories
-fn link_dep_headers_h(
-    dep: &KilnIngot,
-    out_buffer: &mut Vec<String>,
-    packages: &mut HashSet<String>,
-) -> Result<()> {
-    let dep_id = format!("{}/{}", dep.owner(), dep.repo_name());
-
-    if packages.contains(&dep_id) {
-        return Ok(());
-    } else {
-        packages.insert(dep_id);
-    }
-
-    let include_dir = match dep.include_dir()? {
-        Some(s) => s,
-        None => return Err(anyhow!("{} has an ambiguous include dir", &dep.uri)),
-    };
-
-    let inc_dir_string = include_dir.to_str().unwrap().to_string();
-
-    if !include_dir.is_dir() {
-        eprintln!("Path to include directory points to a non-directory");
-        eprintln!("[{}]'s include_dir points to {}", &dep.uri, &inc_dir_string);
-        eprintln!("Change/add the `include_dir = \"relative/path/to/include\"` fild in Kiln.Toml to fix this");
-        std::process::exit(1);
-    }
-
-    out_buffer.push(inc_dir_string);
-
-    // Recursivley handle chain dependnecies
-    if let Some(kiln_cfg) = dep.get_kiln_cfg()? {
-        if let Some(chain_deps) = kiln_cfg.dependency {
-            for cd in &chain_deps {
-                link_dep_headers_h(cd, out_buffer, packages)?;
-            }
-        }
-    }
-
-    Ok(())
-}
 
 #[derive(Debug)]
-struct ProjBuilder<'a> {
+pub struct ProjBuilder<'a> {
     config: &'a Config,
     ingots: HashSet<String>,
+    pub compile_cmd: CompileCmdBuilder,
+}
+
+#[derive(Debug, Default)]
+pub struct CompileCmdBuilder {
+    pub source_files: HashSet<String>,
+    include_dirs: HashSet<String>,
+    static_libs: HashSet<String>,
+    dynamic_libs: HashSet<String>,
+    sys_libs: HashSet<String>,
+    compiler: String,
+    output_filename: Option<String>,
+    compiler_flags: HashSet<String>,
+}
+
+impl<'a> ProjBuilder<'a> {
+    pub fn new(config: &'a Config) -> Self {
+        let mut compile_cmd = CompileCmdBuilder {
+            compiler: config.get_compiler_path(),
+            ..CompileCmdBuilder::default()
+        };
+
+        for src_dir in &config.project.src_dirs {
+            for file in fs::read_dir(src_dir).unwrap() {
+                let file = file.unwrap();
+                if !file.file_type().unwrap().is_file() {
+                    continue;
+                }
+
+                if !file.file_name().to_str().unwrap().ends_with(config.project.language_ext()) {
+                    continue;
+                }
+
+                let filepath = file.path();
+                let filepath = filepath.to_str().unwrap().to_string();
+
+                compile_cmd.source_files.insert(filepath);
+            }
+        }
+
+        if let Some(staticlib_dirs) = &config.project.staticlib_dirs  {
+            for static_lib in staticlib_dirs {
+                for file in fs::read_dir(static_lib).unwrap() {
+                    let file = file.unwrap();
+                    if !file.file_type().unwrap().is_file() {
+                        continue;
+                    }
+
+                    if !file.file_name().to_str().unwrap().ends_with(constants::STATIC_LIB_FE) {
+                        continue;
+                    }
+
+                    let filepath = file.path();
+                    let filepath = filepath.to_str().unwrap().to_string();
+
+                    compile_cmd.static_libs.insert(filepath);
+                }
+            }
+        }
+
+        for include_dir in &config.project.include_dirs {
+            compile_cmd.include_dirs.insert(include_dir.clone());
+        }
+
+        Self {
+            config,
+            ingots: HashSet::new(),
+            compile_cmd,
+        }
+    }
+
+    pub fn attach_ingot(&mut self, ingot: &KilnIngot) {
+        let path_buf = ingot.get_global_path();
+        let path = path_buf.to_str()
+            .unwrap()
+            .to_string();
+
+        if !self.ingots.insert(path.clone()) {
+            // Runs if the path already exists
+            return;
+        }
+
+        // Add source files and static libraries to compile comand
+        let ingot_dir = path_buf.join("build").join("ingot");
+        for file in fs::read_dir(&ingot_dir).unwrap() {
+            match file {
+                Ok(file) => {
+                    if !file.file_type().unwrap().is_file() {
+                        continue;
+                    }
+
+                    let filename = file.file_name();
+                    let filename = filename.to_str().unwrap();
+                    
+                    let target_f = file.path().to_str().unwrap().to_string();
+
+                    if filename.ends_with(self.config.project.language_ext()) {
+                        self.compile_cmd.source_files.insert(target_f);
+                    }
+                    else if filename.ends_with(constants::STATIC_LIB_FE) {
+                        self.compile_cmd.static_libs.insert(target_f);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("WARNING: Error scanning dir {:?}:\n{}", ingot_dir, e);
+                }
+            }
+        }
+
+        // Add include & dynamic library directories to compile command. 
+        let ingot_dir_s = ingot_dir.to_str()
+            .unwrap()
+            .to_string();
+        self.compile_cmd.dynamic_libs.insert(format!("-L{}", ingot_dir_s));
+        self.compile_cmd.include_dirs.insert(ingot_dir_s);
+
+        let ingot_md_path = ingot_dir.join(PACKAGE_CONFIG_FILE);
+        let ingot_md: IngotMetadata = IngotMetadata::from(&ingot_md_path).unwrap();
+
+        // Add syslibs to compile command
+        for sys_lib in &ingot_md.metadata.sys_libs {
+            self.compile_cmd.sys_libs.insert(sys_lib.clone());
+        }
+
+        // Recursively does the same for all the other ingots. 
+        for upstream_ingot in &ingot_md.metadata.ingot_deps {
+            self.attach_ingot(upstream_ingot);
+        }
+    }
+
+    pub fn build_exe(&mut self, build_prof: BuildProfile) -> Result<()> {
+        let mut output_file = self.config.project.name.to_string();
+        output_file.push_str(constants::EXECUTABLE_FE);
+
+        let output_filepath = Path::new("build")
+            .join(build_prof.to_str(false))
+            .join(output_file);
+        
+        self.compile_cmd.output_filename = Some(output_filepath.to_str().unwrap().to_string());
+
+        let (shell, flag) = if cfg!(target_os = "windows") {
+            ("cmd", "/C")
+        } else {
+            ("sh", "-c")
+        };
+
+        let compile_cmd = self.compile_cmd.generate_compile_cmd(config::BuildType::exe).join(" ");
+
+        let cmd = process::Command::new(shell)
+            .arg(flag)
+            .arg(&compile_cmd)
+            .stdout(process::Stdio::inherit())
+            .stderr(process::Stdio::inherit())
+            .stdin(process::Stdio::inherit())
+            .output()?;
+
+        if !cmd.status.success() {
+            // If the compile command failed, terminate this parent process
+            process::exit(1);
+        }
+
+        Ok(())
+    }
+
+    pub fn build_ingot(&self) {
+        let ingot_dir = Path::new("build").join("ingot");
+        if fs::exists(&ingot_dir).unwrap() {
+            fs::remove_dir_all(&ingot_dir).unwrap();
+        }
+
+        fs::create_dir_all(&ingot_dir).unwrap();
+        
+        for src_file in &self.compile_cmd.source_files {
+            let src_filename = utils::extract_filename(src_file);
+            fs::copy(&src_file, ingot_dir.join(src_filename)).unwrap();
+        }
+
+        for static_lib in &self.compile_cmd.static_libs {
+            let static_lib_name = utils::extract_filename(static_lib);
+            fs::copy(&static_lib, ingot_dir.join(static_lib_name)).unwrap();
+        }
+
+        for include_dir in &self.compile_cmd.include_dirs {
+            for header_file in fs::read_dir(include_dir).unwrap() {
+                let header_file = header_file.unwrap();
+                if !header_file.file_type().unwrap().is_file() {
+                    continue;
+                }
+                let headerfile_name = header_file.file_name()
+                    .into_string()
+                    .unwrap();
+
+                fs::copy( header_file.path(), ingot_dir.join(headerfile_name)).unwrap();
+            }
+        }
+
+        let mut ingot_deps = vec![];
+        if let Some(v) = &self.config.dependency {
+            ingot_deps = v.clone();
+        }
+
+        let ingot_md = IngotMetadata {
+            metadata: Metadata {
+                ingot_deps,
+                sys_libs: vec![], // TODO -> Fill this out properly
+                staticlib_support: false,
+                source_support: true,
+            }
+        };
+
+        let ingot_md_str = toml::to_string_pretty(&ingot_md).unwrap();
+        fs::write(ingot_dir.join(constants::PACKAGE_CONFIG_FILE), &ingot_md_str)
+            .unwrap();
+    }
+
+}
+
+impl CompileCmdBuilder {
+    pub fn generate_compile_cmd(&self, build_type: config::BuildType) -> Vec<String> {
+        let mut compile_cmd = vec![
+            self.compiler.clone(),
+        ];
+
+        if let config::BuildType::dynamic_library = build_type {
+            compile_cmd.push("-shared".to_string());
+        }
+
+        compile_cmd.push(format!("\"{}\"", self.output_filename.clone().unwrap()));
+        compile_cmd.push("-o".to_string());
+
+        for static_lib in &self.static_libs {
+            compile_cmd.push(format!("\"{}\"", static_lib));
+        }
+        for source_file in &self.source_files {
+            compile_cmd.push(format!("\"{}\"", source_file));
+        }
+        for include_dir in &self.include_dirs {
+            compile_cmd.push(format!("\"-I{}\"", include_dir));
+        }
+        for dynamic_lib in &self.dynamic_libs {
+            compile_cmd.push(format!("\"-L{}\"", dynamic_lib));
+        }
+        for sys_lib in &self.sys_libs {
+            compile_cmd.push(format!("\"{}\"", sys_lib));
+        }
+
+        match build_type {
+            config::BuildType::exe => {
+                // Nothing additional is required
+            }
+            config::BuildType::static_library => {
+                // Already taken care of above
+            }
+            config::BuildType::dynamic_library => {
+                unimplemented!();
+            }
+            config::BuildType::ingot => {
+                unreachable!("You should not be calling this function to build an ingot (if you are a user, please file a github issue)");
+            }
+        }
+
+        compile_cmd
+    }
 }

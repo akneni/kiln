@@ -2,6 +2,8 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
+use crate::config::KilnIngot;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IngotMetadata {
     pub metadata: Metadata,
@@ -28,5 +30,6 @@ pub struct Metadata {
     pub source_support: bool,
     pub staticlib_support: bool,
     pub sys_libs: Vec<String>,
+    pub ingot_deps: Vec<KilnIngot>,
 }
 

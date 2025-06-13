@@ -20,6 +20,8 @@ use strum::IntoEnumIterator;
 use testing::safety;
 use utils::Language;
 
+use crate::build_sys::ProjBuilder;
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let cli_args: cli::CliCommand;
@@ -214,20 +216,15 @@ async fn main() {
             for &b_type in config.project.build_type.iter() {
                 println!("BuildType: {:?}", b_type);
 
-                let comp_cmd = build_compilation_cmd(&profile, &config, b_type);
+                let mut builder = ProjBuilder::new(&config);
+                if let Some(v) = &config.dependency {
+                    for ingot in v {
+                        builder.attach_ingot(ingot);
+                    }
+                }
 
-                match comp_cmd {
-                    Ok(v) => {
-                        println!("{}\n", v.join(" "));
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "An error occurred while building the project (build mode {:?}):\n{}",
-                            b_type, e
-                        );
-                        process::exit(1);
-                    }
-                    }
+                let compile_cmd = builder.compile_cmd.generate_compile_cmd(b_type);
+                println!("{}\n", compile_cmd.join(" "));
             }
 
         }
@@ -354,93 +351,25 @@ fn handle_warnings(config: &Config) -> Result<Vec<safety::Warning>> {
     Ok(warnings)
 }
 
-fn build_compilation_cmd(profile: &str, config: &Config, build_type: config::BuildType) -> Result<Vec<String>> {
-    if !profile.starts_with("--") {
-        eprintln!("Error: profile must start with `--`");
-        process::exit(1);
-    }
-
-    let cwd = env::current_dir().unwrap();
-
-    let build_dir = cwd.join("build").join(&profile[2..]);
-    if !build_dir.exists() {
-        fs::create_dir_all(&build_dir).unwrap();
-    }
-
-    let lang = Language::new(&config.project.language).unwrap();
-    let mut link_file = vec![];
-    build_sys::link_dep_files(&config, lang, &mut link_file)?;
-    build_sys::link_proj_files(&config, &cwd, lang, &mut link_file)
-        .map_err(|err| anyhow!("Failed to link source files: {}", err))?;
-
-    let link_lib = build_sys::link_sys_lib(&cwd);
-    let opt_flags = build_sys::opt_flags(&profile, config).unwrap();
-
-    let header_dirs = build_sys::link_dep_headers(&config)?;
-    let so_dir = build_sys::link_dep_shared_obj(&cwd)?;
-
-    let compilation_cmd = build_sys::full_compilation_cmd(
-        config,
-        &profile,
-        &link_file,
-        &link_lib,
-        &header_dirs,
-        &so_dir,
-        &opt_flags,
-        build_type,
-    )?;
-
-    Ok(compilation_cmd)
-}
-
 fn handle_build(profile: &str, config: &Config, build_type: config::BuildType) -> Result<()> {
-    let mut compilation_cmd = build_compilation_cmd(profile, config, build_type)?;
+    let mut builder = ProjBuilder::new(config);
 
-    #[cfg(debug_assertions)]
-    {
-        println!("{}\n\n", compilation_cmd.join(" "));
-    }
-
-    let build_dir = match build_type {
-        config::BuildType::static_library => env::current_dir()
-            .unwrap()
-            .join("build")
-            .join(&profile[2..])
-            .join("obj"),
-        _ => env::current_dir().unwrap(),
-    };
-
-    // Ensure that paths with spaces get treated as a single argument
-    compilation_cmd = compilation_cmd.into_iter().map(|word| {
-        if word.starts_with("/") || word.starts_with("-I/") {
-            format!("\"{}\"", word)
-        } else {
-            word
+    if let Some(ingots) = &config.dependency {
+        for ingot in ingots {
+            builder.attach_ingot(ingot);
         }
-    }).collect();
-
-    let command = compilation_cmd.join(" ");
-    let (shell, flag) = if cfg!(target_os = "windows") {
-        ("cmd", "/C")
-    } else {
-        ("sh", "-c")
-    };
-
-    let child = process::Command::new(shell)
-        .arg(flag)
-        .arg(&command)
-        .stdout(process::Stdio::inherit())
-        .stderr(process::Stdio::inherit())
-        .stdin(process::Stdio::inherit())
-        .current_dir(&build_dir)
-        .output()?;
-
-    if !child.status.success() {
-        return Err(anyhow!(
-            "Compilation command exited with non-zero exit code"
-        ));
     }
 
+    let profile = build_sys::BuildProfile::from(profile);
+    match build_type {
+        config::BuildType::exe => {
+            builder.build_exe(profile)?;
+        }
+        config::BuildType::ingot => {
+            builder.build_ingot();
+        }
+        _ => unimplemented!(),
+    }
     Ok(())
 }
 
@@ -481,8 +410,8 @@ fn handle_execution(
 
 fn handle_gen_headers(config: &Config, mut files: Vec<String>) -> Result<()> {
     let cwd = env::current_dir()?;
-    let src_dirs = &config.project.src_dir;
-    let inc_dir = &config.project.src_dir;
+    let src_dirs = &config.project.src_dirs;
+    let inc_dir = &config.project.src_dirs;
 
     let inc_dir = cwd.join("include");
 
@@ -639,52 +568,25 @@ fn handle_tests(profile: &str, config: &Config, test_file: &str) -> Result<()> {
 
     let cwd = env::current_dir().unwrap();
 
-    let build_dir = cwd.join("build").join(&profile[2..]);
-    if !build_dir.exists() {
-        fs::create_dir_all(&build_dir).unwrap();
+    let mut builder = ProjBuilder::new(config);
+    if let Some(ingots) = &config.dependency {
+        for ingot in ingots {
+            builder.attach_ingot(ingot);
+        }
     }
 
-    let lang = Language::new(&config.project.language).unwrap();
-    let mut link_file = vec![];
-    build_sys::link_dep_files(&config, lang, &mut link_file)?;
-    build_sys::link_proj_files(&config, &cwd, lang, &mut link_file)
-        .map_err(|err| anyhow!("Failed to link source files: {}", err))?;
-
-    link_file = link_file
-        .into_iter()
-        .filter(|f| !f.ends_with("main.c"))
-        .collect();
-
-    link_file.push(test_file.to_string());
-
-    let link_lib = build_sys::link_sys_lib(&cwd);
-    let opt_flags = build_sys::opt_flags(&profile, config).unwrap();
-
-    let header_dirs = build_sys::link_dep_headers(&config)?;
-    let so_dir = build_sys::link_dep_shared_obj(&cwd)?;
-
-    let compilation_cmd = build_sys::full_compilation_cmd(
-        config,
-        &profile,
-        &link_file,
-        &link_lib,
-        &header_dirs,
-        &so_dir,
-        &opt_flags,
-        config::BuildType::exe,
-    )?;
-
-    let output = process::Command::new(&compilation_cmd[0])
-        .args(&compilation_cmd[1..])
-        .stdout(process::Stdio::piped())
-        .stdin(process::Stdio::null())
-        .stderr(process::Stdio::piped())
-        .output()?;
-
-    if !output.status.success() {
-        let msg = String::from_utf8(output.stderr).unwrap_or("unknown stderr".to_string());
-        return Err(anyhow!("Compilation failed for `{}`:\n{}", test_file, msg));
+    // Replace the original main file with the new main file
+    let mut main_file = "".to_string();
+    for f in &builder.compile_cmd.source_files {
+        if f.ends_with("main.c") {
+            main_file = f.clone();
+            break;
+        }
     }
+    builder.compile_cmd.source_files.remove(&main_file);
+    builder.compile_cmd.source_files.insert(test_file.to_string());
+
+    builder.build_exe(build_sys::BuildProfile::from(profile))?;
 
     let bin_path = cwd
         .join("build")

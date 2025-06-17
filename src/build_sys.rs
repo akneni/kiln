@@ -116,6 +116,7 @@ pub struct CompileCmdBuilder {
     sys_libs: HashSet<String>,
     compiler: String,
     output_filename: Option<String>,
+    c_standard: Option<String>,
 
     debug_compiler_flags: HashSet<String>,
     release_compiler_flags: HashSet<String>,
@@ -162,6 +163,8 @@ impl<'a> ProjBuilder<'a> {
         compile_cmd.debug_compiler_flags = config.build_options.debug_flags.clone().into_iter().collect();
         compile_cmd.release_compiler_flags = config.build_options.release_flags.clone().into_iter().collect();
         compile_cmd.shared_compiler_flags = config.build_options.shared_flags.clone().into_iter().collect();
+
+        compile_cmd.c_standard = config.get_standard();
 
         let mut project_builder = Self {
             config,
@@ -387,6 +390,11 @@ impl CompileCmdBuilder {
         compile_cmd.push("-o".to_string());
         compile_cmd.push(format!("\"{}\"", self.output_filename.clone().unwrap()));
 
+        if let Some(c_standard) = &self.c_standard {
+            if !compile_cmd.contains(c_standard) {
+                compile_cmd.push(c_standard.clone());
+            }
+        }
 
         for static_lib in &self.static_libs {
             compile_cmd.push(format!("\"{}\"", static_lib));

@@ -1,10 +1,7 @@
 use crate::config::{self, Config, KilnIngot};
-use crate::constants::{CONFIG_FILE, PACKAGE_CONFIG_FILE};
-use crate::packaging::ingot::IngotMetadata;
 
 use std::collections::HashSet;
 use std::fmt::Debug;
-use std::io::Write;
 use std::path::Path;
 use std::{fs, time::Duration};
 

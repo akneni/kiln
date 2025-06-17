@@ -10,6 +10,7 @@ pub struct IngotMetadata {
 }
 
 impl IngotMetadata {
+    #[allow(unused)]
     pub fn to(&self, path: impl AsRef<Path>) -> Result<()> {
         let toml_str = toml::to_string_pretty(self)?;
         fs::write(path, toml_str)?;

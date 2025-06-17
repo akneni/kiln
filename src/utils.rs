@@ -1,8 +1,5 @@
-use std::collections::HashSet;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use anyhow::{anyhow, Result};
 use colored::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, clap::ValueEnum)]
@@ -12,31 +9,6 @@ pub enum Language {
     Cuda,
 }
 
-impl Language {
-    pub fn new(mut s: &str) -> Result<Self> {
-        if s.starts_with("--") {
-            s = &s[2..];
-        } else if s.starts_with(".") {
-            s = &s[1..];
-        }
-        let s = s.to_lowercase();
-        match s.as_str() {
-            "c" => Ok(Language::C),
-            "cpp" => Ok(Language::Cpp),
-            _ => Err(anyhow!("string not valid")),
-        }
-    }
-
-    pub fn file_ext(&self) -> &'static str {
-        match self {
-            Self::C => ".c",
-            Self::Cpp => ".cpp",
-            Self::Cuda => ".cu",
-        }
-    }
-}
-
-#[allow(unused)]
 pub fn expand_user(path: &str) -> String {
     if path.starts_with("~/") {
         if let Some(home_dir) = std::env::var_os("HOME") {
@@ -70,14 +42,6 @@ pub fn print_warning(
         msg,
     );
     println!("{}\n", err_msg);
-}
-
-pub fn join_rel_path(abs_path: impl AsRef<Path>, rel_path: &str) -> PathBuf {
-    let path = abs_path.as_ref();
-    match rel_path {
-        "" | "." | "./" => path.to_path_buf(),
-        _ => path.join(rel_path),
-    }
 }
 
 pub fn extract_filename<'a>(filepath: &'a str) -> &'a str {

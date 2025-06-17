@@ -129,18 +129,6 @@ impl Config {
     pub fn get_standard(&self) -> Option<String> {
         self.build_options.standard.clone()
     }
-
-    pub fn get_flags(&self, compilation_profile: &str) -> Vec<String> {
-        let mut comp_flags = vec![];
-        if compilation_profile == "debug" {
-            comp_flags = self.build_options.debug_flags.clone();
-        } else if compilation_profile == "release" {
-            comp_flags = self.build_options.release_flags.clone()
-        }
-        comp_flags.extend_from_slice(&self.build_options.shared_flags);
-
-        comp_flags
-    }
 }
 
 impl Project {
@@ -221,17 +209,7 @@ impl KilnIngot {
         let cfg = Config::from(&cfg_file)?;
         Ok(Some(cfg))
     }
-
-    pub fn include_dir(&self) -> PathBuf {
-        let p = self.get_global_path();
-        p.join("build").join("ingot")
-    }
-
-    pub fn get_source_dir(&self) -> PathBuf {
-        let p = self.get_global_path();
-        p.join("build").join("ingot")
-    }
-
+    
     /// Adds a dependency if it doesn't already exist
     /// Returns true if the dependency already exists
     pub fn add_dependency(deps: &mut Vec<KilnIngot>, new_dep: KilnIngot) -> bool {

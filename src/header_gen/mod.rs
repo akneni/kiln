@@ -1,11 +1,10 @@
 pub mod lexer_c;
 
-use std::{collections::{HashMap, HashSet}, fs};
+use std::{collections::{HashMap, HashSet}, fs, mem};
 
 use anyhow::{anyhow, Result};
-use ouroboros::self_referencing;
 
-use crate::config;
+use crate::{config, constants};
 
 
 // Maps character's ascii codes to their token
@@ -221,7 +220,7 @@ impl<'a> Token<'a> {
 
 
 impl<'self_> ProjTokens<'self_> {
-    fn from_proj(config: &config::Config) {
+    pub fn new(config: &config::Config) -> Self {
         let mut proj_tokens = Self::default();
 
         let dir_groups = &[
@@ -254,30 +253,50 @@ impl<'self_> ProjTokens<'self_> {
                 }
             }
         }
+        proj_tokens
     }
 
+    /// If supplied a file name, this will return the full path
+    /// Returns none if no file with that name was found.
+    fn expand_filename(&self, filename: &str) -> Option<String> {
+        let fpath_end = format!("{}{}", constants::FP_SEP, filename);
+        for s in self.code_files.keys() {
+            if s == filename || s.ends_with(&fpath_end) {
+                return Some(s.clone());
+            }
+        }
+        None
+    }
 
     /// Returns None if there is no file in the project direcotry with the name specified
-    fn get_tokens<'a>(&'a mut self, filepath: &str) -> Option<&'a Vec<Token<'self_>>> 
+    pub fn get_tokens<'a>(&'a self, filepath: &str) -> Option<&'a Vec<Token<'self_>>> 
         where 'a: 'self_
     {
-        if let Some(tokens) = self.tokens.get(filepath) {
+        let mut filepath = filepath.to_string();
+        if let None = self.code_files.get(&filepath) {
+            filepath = match self.expand_filename(&filepath) {
+                Some(r) => r,
+                None => return None,
+            };
+        }
+
+        if let Some(tokens) = self.tokens.get(&filepath) {
             return Some(tokens);
         }
 
-        let code_text = match self.code_files.get(filepath) {
+        let code_text = match self.code_files.get(&filepath) {
             Some(code_text) => {
                 match code_text {
                     Some(code_text) => code_text,
                     None => {
-                        let code_text = fs::read_to_string(filepath).unwrap();
+                        let code_text = fs::read_to_string(&filepath).unwrap();
                         unsafe {
                             let code_files_ptr = &self.code_files as *const HashMap<String, Option<String>>;
                             let code_files_ptr = code_files_ptr as *mut HashMap<String, Option<String>>;
-                            (*code_files_ptr).insert(filepath.to_string(), Some(code_text));
+                            (*code_files_ptr).insert(filepath.clone(), Some(code_text));
                         }
 
-                        self.code_files.get(filepath).unwrap().as_ref().unwrap()
+                        self.code_files.get(&filepath).unwrap().as_ref().unwrap()
                     }
                 }
             }
@@ -293,17 +312,58 @@ impl<'self_> ProjTokens<'self_> {
             (*tokens_ptr).insert(filepath.to_string(), tokens);
         }
 
-        self.tokens.get(filepath)
+        self.tokens.get(&filepath)
+    }
+    
+    pub fn get_source_code<'a>(&'a self, filepath: &str) -> Option<&'a String> 
+        where 'a: 'self_
+    {
+        let mut filepath = filepath.to_string();
+        if let None = self.code_files.get(&filepath) {
+            filepath = match self.expand_filename(&filepath) {
+                Some(r) => r,
+                None => return None,
+            };
+        }
+        
+        let source_code = fs::read_to_string(&filepath).unwrap();
+        unsafe {
+            let code_files_ptr = &self.code_files as *const HashMap<String, Option<String>> as *mut HashMap<String, Option<String>>;
+            (*code_files_ptr).insert(filepath.clone(), Some(source_code));
+        }
+        self.code_files.get(&filepath).unwrap().as_ref()
     }
 
-    fn iter_tokens(&mut self) {
+    pub fn iter_tokens(&mut self) -> ProjTokensIter {
+        let filepaths: Vec<String> = self.code_files
+            .keys()
+            .map(|k| k.clone())
+            .collect();
 
+        ProjTokensIter {
+            proj_tokens: unsafe { mem::transmute(self as *mut Self) }, 
+            filepaths, 
+            idx: 0 
+        }
+    }
+
+    pub fn iter_source_code(&self) -> ProjScIter {
+        let filepaths: Vec<String> = self.code_files
+            .keys()
+            .map(|k| k.clone())
+            .collect();
+
+        ProjScIter {
+            proj_tokens: unsafe { mem::transmute(self as *const Self as *mut Self) }, 
+            filepaths, 
+            idx: 0 
+        }
     }
 
 }
 
-struct ProjTokensIter<'a> {
-    proj_tokens: &'a mut ProjTokens<'a>,
+pub struct ProjTokensIter<'a> {
+    proj_tokens: *mut ProjTokens<'a>,
     filepaths: Vec<String>,
     idx: usize,
 }
@@ -325,11 +385,38 @@ impl<'a> Iterator for ProjTokensIter<'a> {
         };
 
         unsafe {
-            let tokens_ptr: &'a Vec<Token<'a>> = std::mem::transmute(tokens_ptr);
+            let tokens_ptr: &'a Vec<Token<'a>> = mem::transmute(tokens_ptr);
             Some(tokens_ptr)
         }
     }
 }
+
+// Project source code iterator
+pub struct ProjScIter<'a> {
+    proj_tokens: *mut ProjTokens<'a>,
+    filepaths: Vec<String>,
+    idx: usize,
+}
+
+impl<'a> Iterator for ProjScIter<'a> {
+    type Item = (String, &'a String);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx >= self.filepaths.len() {
+            return None;
+        }
+
+        let idx = self.idx;
+        self.idx += 1;
+
+        let source_code = unsafe {
+            let proj_sc_ptr = self.proj_tokens as *mut ProjTokens<'a>;
+            (*proj_sc_ptr).get_source_code(&self.filepaths[idx]).unwrap()
+        };
+        Some((self.filepaths[idx].clone(), source_code))
+    }
+}
+
 
 /// Returns an error if there are any duplicate definitions
 /// Otherwise, adds all definitions in `src` to `dst`

@@ -1,12 +1,10 @@
-use crate::lexer_c;
+use crate::{header_gen, lexer_c};
 
 use anyhow::{anyhow, Result};
 use std::{
     collections::HashMap,
     env,
     fmt::Debug,
-    fs,
-    sync::{Arc, Mutex},
 };
 
 /// This checks if unsafe functions exist within a line using general string parsing
@@ -58,7 +56,7 @@ pub struct Warning {
     pub warning_type: WarningType,
 }
 
-pub fn check_files(source_type: &str) -> Result<Vec<Warning>> {
+pub fn check_files(source_type: &str, proj_tokens: &header_gen::ProjTokens) -> Result<Vec<Warning>> {
     let mut warnings = vec![];
     let mut source_dir = env::current_dir()?;
     source_dir.push("src");
@@ -71,32 +69,16 @@ pub fn check_files(source_type: &str) -> Result<Vec<Warning>> {
 
     let func_map = FunctionMap::new();
 
-    for path in fs::read_dir(source_dir)? {
-        if let Ok(path) = path {
-            let path = path.path();
-            let name = path.file_name().unwrap().to_str().unwrap().to_string();
-            if !name.ends_with(source_type) {
-                continue;
-            }
-
-            let source_code = fs::read_to_string(path)?;
-            let mut curr_warnings = scan_file(&name, &source_code, &func_map);
-
-            warnings.append(&mut curr_warnings);
+    for (name, source_code) in proj_tokens.iter_source_code() {
+        if !name.ends_with(source_type) {
+            continue;
         }
+
+        let mut curr_warnings = scan_file(&name, &source_code, &func_map);
+        warnings.append(&mut curr_warnings);
     }
 
     Ok(warnings)
-}
-
-#[allow(unused)]
-pub fn check_files_threaded(source_type: &str, warn_buff: Arc<Mutex<Vec<Warning>>>) -> Result<()> {
-    let mut warnings = check_files(source_type)?;
-
-    let mut lock = warn_buff.lock().unwrap();
-    lock.append(&mut warnings);
-
-    Ok(())
 }
 
 fn scan_file(filename: &str, source_code: &str, func_map: &FunctionMap) -> Vec<Warning> {
@@ -110,8 +92,8 @@ fn scan_file(filename: &str, source_code: &str, func_map: &FunctionMap) -> Vec<W
             continue;
         }
 
-        if let lexer_c::Token::Object(obj) = token {
-            if tokens[token_num + 1] != lexer_c::Token::OpenParen {
+        if let header_gen::Token::Object(obj) = token {
+            if tokens[token_num + 1] != header_gen::Token::OpenParen {
                 continue;
             }
             if let Some(safe_fn) = func_map.map.get(*obj) {

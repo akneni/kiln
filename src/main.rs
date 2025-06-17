@@ -20,7 +20,7 @@ use strum::IntoEnumIterator;
 use testing::safety;
 use utils::Language;
 
-use crate::build_sys::ProjBuilder;
+use crate::{build_sys::ProjBuilder, header_gen::ProjTokens};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -94,13 +94,15 @@ async fn main() {
                 process::exit(1);
             }
             let config = config.unwrap();
+            let tokens = ProjTokens::new(&config);
+
             if config.project.language != "c" {
                 println!("Unfortunately, generating header files is only available for C.");
                 println!("Stay tuned!! C++/CUDA support coming soon!");
                 process::exit(0);
             }
 
-            if let Err(err) = handle_gen_headers(&config, args) {
+            if let Err(err) = handle_gen_headers(&config, args, &tokens) {
                 println!("An error occurred while generating header files:\n{}", err);
                 process::exit(1);
             }
@@ -150,9 +152,11 @@ async fn main() {
                 process::exit(1);
             }
             let config = config.unwrap();
+            let tokens = ProjTokens::new(&config);
+
             handle_check_installs(&config).await;
 
-            if let Err(e) = handle_warnings(&config) {
+            if let Err(e) = handle_warnings(&config, &tokens) {
                 eprintln!("An error occurred during static analysis:\n{}", e);
                 process::exit(1);
             }
@@ -177,6 +181,8 @@ async fn main() {
             }
 
             let config = config.unwrap();
+            let tokens = ProjTokens::new(&config);
+
             if !config.project.build_type.contains(&config::BuildType::exe) {
                 eprintln!("Cannot run a non executable project");
                 process::exit(1);
@@ -184,7 +190,7 @@ async fn main() {
 
             handle_check_installs(&config).await;
 
-            if let Err(e) = handle_warnings(&config) {
+            if let Err(e) = handle_warnings(&config, &tokens) {
                 eprintln!("An error occurred during static analysis:\n{}", e);
                 process::exit(1);
             }
@@ -206,9 +212,10 @@ async fn main() {
                 process::exit(1);
             }
             let config = config.unwrap();
+            let tokens = ProjTokens::new(&config);
             handle_check_installs(&config).await;
 
-            if let Err(e) = handle_warnings(&config) {
+            if let Err(e) = handle_warnings(&config, &tokens) {
                 eprintln!("An error occurred during static analysis:\n{}", e);
                 process::exit(1);
             }
@@ -328,12 +335,12 @@ async fn main() {
 }
 
 /// Returns true if there were warnings and false if there was no warnings.
-fn handle_warnings(config: &Config) -> Result<Vec<safety::Warning>> {
+fn handle_warnings(config: &Config, proj_tokens: &ProjTokens) -> Result<Vec<safety::Warning>> {
     if !config.kiln_static_analysis() {
         return Ok(vec![]);
     }
 
-    let warnings = safety::check_files(&config.project.language)?;
+    let warnings = safety::check_files(&config.project.language, proj_tokens)?;
 
     for w in &warnings {
         utils::print_warning(
@@ -408,10 +415,8 @@ fn handle_execution(
     Ok(())
 }
 
-fn handle_gen_headers(config: &Config, mut files: Vec<String>) -> Result<()> {
+fn handle_gen_headers<'a>(config: &Config, mut files: Vec<String>, proj_tokens: &'a ProjTokens<'a>) -> Result<()> {
     let cwd = env::current_dir()?;
-    let src_dirs = &config.project.src_dirs;
-    let inc_dir = &config.project.src_dirs;
 
     let inc_dir = cwd.join("include");
 
@@ -425,30 +430,27 @@ fn handle_gen_headers(config: &Config, mut files: Vec<String>) -> Result<()> {
     for file in &files {
         let (raw_name, file_ext) = file.rsplit_once(".").unwrap();
         let filepath = cwd.join(file);
+        let filepath_str = filepath.to_str().unwrap().to_string();
 
-        if raw_name == "main" {
-            continue;
-        }
         if matches!(file_ext, "cpp" | "cuda") {
             println!("WARNING: header gen for .{} files are not supported", file_ext);
         }
 
         let header_name = format!("{}.h", raw_name);
 
-        let code = fs::read_to_string(&filepath)?;
-        let tokens = lexer_c::tokenize(&code)?;
+        let tokens = proj_tokens.get_tokens(&filepath_str).unwrap();
 
-        let code_h = fs::read_to_string(inc_dir.join(&header_name)).unwrap_or("".to_string());
-        let tokens_h = lexer_c::tokenize(&code_h)?;
+        let empty_vec = vec![];
+        let tokens_h = proj_tokens.get_tokens(&header_name).unwrap_or(&empty_vec);
 
-        let mut defines_h = lexer_c::get_defines(&tokens_h);
-        let mut udts_h = lexer_c::get_udts(&tokens_h);
-        let mut includes_h = lexer_c::get_includes(&tokens_h);
+        let mut defines_h = lexer_c::get_defines(tokens_h);
+        let mut udts_h = lexer_c::get_udts(tokens_h);
+        let mut includes_h = lexer_c::get_includes(tokens_h);
 
-        let fn_defs = lexer_c::get_fn_def(&tokens);
-        let includes = lexer_c::get_includes(&tokens);
-        let defines = lexer_c::get_defines(&tokens);
-        let udts = lexer_c::get_udts(&tokens);
+        let fn_defs = lexer_c::get_fn_def(tokens);
+        let includes = lexer_c::get_includes(tokens);
+        let defines = lexer_c::get_defines(tokens);
+        let udts = lexer_c::get_udts(tokens);
 
         // Ensure headerfiles don't include themselves
         let includes = header_gen::filter_out_includes(&includes, raw_name);
@@ -478,21 +480,21 @@ fn handle_gen_headers(config: &Config, mut files: Vec<String>) -> Result<()> {
         headers.push_str(&format!("#define {}_H\n\n", raw_name.to_uppercase()));
 
         for &inc in &includes {
-            let s = lexer_c::Token::tokens_to_string(inc);
+            let s = header_gen::Token::tokens_to_string(inc);
             headers.push_str(s.trim());
             headers.push('\n');
         }
         headers.push('\n');
 
         for &def in &defines_h {
-            let s = lexer_c::Token::tokens_to_string(def);
+            let s = header_gen::Token::tokens_to_string(def);
             headers.push_str(&s);
             headers.push('\n');
         }
         headers.push('\n');
 
         for &struc in &udts_h {
-            headers.push_str(&lexer_c::Token::tokens_to_string(struc).trim());
+            headers.push_str(&header_gen::Token::tokens_to_string(struc).trim());
             headers.push_str("\n\n");
         }
         headers.push('\n');
@@ -500,19 +502,19 @@ fn handle_gen_headers(config: &Config, mut files: Vec<String>) -> Result<()> {
         for &func in &fn_defs {
             let inline_idx = func.iter()
                 .enumerate()
-                .find(|&i| *(i.1) == lexer_c::Token::Object("inline"));
+                .find(|&i| *(i.1) == header_gen::Token::Object("inline"));
             
             if let Some((inline_idx, _)) = inline_idx {
                 // turn `inline void XXX() {}` in .c into `extern inline void XXX();` in .h
                 let mut func = func.to_vec();
-                func.insert(inline_idx, lexer_c::Token::Space);
-                func.insert(inline_idx, lexer_c::Token::Object("extern"));
+                func.insert(inline_idx, header_gen::Token::Space);
+                func.insert(inline_idx, header_gen::Token::Object("extern"));
 
-                let s = lexer_c::Token::tokens_to_string(&func);
+                let s = header_gen::Token::tokens_to_string(&func);
                 headers.push_str(s.trim());
                 headers.push_str(";\n\n");
             } else {
-                let s = lexer_c::Token::tokens_to_string(func);
+                let s = header_gen::Token::tokens_to_string(func);
                 headers.push_str(s.trim());
                 headers.push_str(";\n\n");
             }

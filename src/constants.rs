@@ -100,3 +100,12 @@ pub const EXECUTABLE_FE: &'static str = const {
         ".exe"
     }
 };
+
+/// The seperator for filepaths for the target OS
+pub const FP_SEP: &'static str = const {
+    if cfg!(target_os = "windows") {
+        "\\"
+    } else {
+        "/"
+    }
+};

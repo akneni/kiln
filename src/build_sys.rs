@@ -1,13 +1,14 @@
 use crate::config::{self, KilnIngot};
 use crate::constants::PACKAGE_CONFIG_FILE;
+use crate::header_gen::lexer_c;
 use crate::packaging::ingot::{IngotMetadata, Metadata};
-use crate::{constants, utils};
+use crate::{constants, header_gen, utils};
 use crate::utils::Language;
 use crate::{config::Config, constants::CONFIG_FILE};
 
 use anyhow::{anyhow, Result};
-use std::collections::{HashMap, HashSet};
-use std::{env, process};
+use std::collections::HashSet;
+use std::process;
 use std::{fs, path::Path};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -70,39 +71,6 @@ pub fn create_project(path: &Path, lang: Language) -> Result<()> {
     Ok(())
 }
 
-pub fn link_sys_lib(path: &Path) -> Vec<&'static str> {
-    let c_lib_mappings = [
-        ("<math.h>", "-lm"),                // Math library
-        ("<omp.h>", "-fopenmp"),            // OpenMP library
-        ("<pthread.h>", "-pthread"),        // POSIX threads
-        ("<zlib.h>", "-lz"),                // Compression library (zlib)
-        ("<curl/curl.h>", "-lcurl"),        // cURL library for network operations
-        ("<ssl.h>", "-lssl"),               // SSL/TLS library
-        ("<crypto.h>", "-lcrypto"),         // Cryptography library
-        ("<ncurses.h>", "-lncurses"),       // Ncurses for terminal handling
-        ("<mariadb/mysql.h>", "-lmariadb"), // MySQL/MariaDB client library
-        ("<sqlite3.h>", "-lsqlite3"),       // SQLite library
-        ("<GL/gl.h>", "-lGL"),              // OpenGL library
-        ("<GL/glut.h>", "-lglut"),          // GLUT library for OpenGL
-        ("<X11/Xlib.h>", "-lX11"),          // X11 library for X Window System
-        ("<immintrin.h>", "-march=native"), // AVX instructions
-        ("<liburing.h>", "-luring"),        // liburing library for asynchronous I/O
-        ("<arm_neon.h>", "-mfpu=neon"),     // NEON support for ARM
-    ];
-
-    let mut libs = vec![];
-
-    // TODO: Get thing working
-    // let includes = utils::extract_include_statements(path);
-    // for (incl, link) in c_lib_mappings {
-    //     if includes.contains(&incl.to_string()) {
-    //         libs.push(link)
-    //     }
-    // }
-
-    libs
-}
-
 pub fn validate_proj_repo(path: &Path) -> Result<()> {
     let config = path.join(CONFIG_FILE);
     if !config.exists() {
@@ -148,31 +116,22 @@ pub struct CompileCmdBuilder {
     sys_libs: HashSet<String>,
     compiler: String,
     output_filename: Option<String>,
-    compiler_flags: HashSet<String>,
+
+    debug_compiler_flags: HashSet<String>,
+    release_compiler_flags: HashSet<String>,
+    shared_compiler_flags: HashSet<String>,
 }
 
 impl<'a> ProjBuilder<'a> {
-    pub fn new(config: &'a Config) -> Self {
+    pub fn new(config: &'a Config, proj_tokens: &header_gen::ProjTokens) -> Self {
         let mut compile_cmd = CompileCmdBuilder {
             compiler: config.get_compiler_path(),
             ..CompileCmdBuilder::default()
         };
 
-        for src_dir in &config.project.src_dirs {
-            for file in fs::read_dir(src_dir).unwrap() {
-                let file = file.unwrap();
-                if !file.file_type().unwrap().is_file() {
-                    continue;
-                }
-
-                if !file.file_name().to_str().unwrap().ends_with(config.project.language_ext()) {
-                    continue;
-                }
-
-                let filepath = file.path();
-                let filepath = filepath.to_str().unwrap().to_string();
-
-                compile_cmd.source_files.insert(filepath);
+        for src_file in proj_tokens.iter_filepaths() {
+            if src_file.ends_with(config.project.language_ext()) {
+                compile_cmd.source_files.insert(src_file.clone());
             }
         }
 
@@ -200,11 +159,54 @@ impl<'a> ProjBuilder<'a> {
             compile_cmd.include_dirs.insert(include_dir.clone());
         }
 
-        Self {
+        compile_cmd.debug_compiler_flags = config.build_options.debug_flags.clone().into_iter().collect();
+        compile_cmd.release_compiler_flags = config.build_options.release_flags.clone().into_iter().collect();
+        compile_cmd.shared_compiler_flags = config.build_options.shared_flags.clone().into_iter().collect();
+
+        let mut project_builder = Self {
             config,
             ingots: HashSet::new(),
             compile_cmd,
+        };
+
+        project_builder.link_sys_lib(proj_tokens);
+
+        project_builder
+    }
+
+    fn link_sys_lib(&mut self, proj_tokens: &header_gen::ProjTokens) {
+        let c_lib_mappings = [
+            ("<math.h>", "-lm"),                // Math library
+            ("<omp.h>", "-fopenmp"),            // OpenMP library
+            ("<pthread.h>", "-pthread"),        // POSIX threads
+            ("<zlib.h>", "-lz"),                // Compression library (zlib)
+            ("<curl/curl.h>", "-lcurl"),        // cURL library for network operations
+            ("<ssl.h>", "-lssl"),               // SSL/TLS library
+            ("<crypto.h>", "-lcrypto"),         // Cryptography library
+            ("<ncurses.h>", "-lncurses"),       // Ncurses for terminal handling
+            ("<mariadb/mysql.h>", "-lmariadb"), // MySQL/MariaDB client library
+            ("<sqlite3.h>", "-lsqlite3"),       // SQLite library
+            ("<GL/gl.h>", "-lGL"),              // OpenGL library
+            ("<GL/glut.h>", "-lglut"),          // GLUT library for OpenGL
+            ("<X11/Xlib.h>", "-lX11"),          // X11 library for X Window System
+            ("<immintrin.h>", "-march=native"), // AVX instructions
+            ("<liburing.h>", "-luring"),        // liburing library for asynchronous I/O
+            ("<arm_neon.h>", "-mfpu=neon"),     // NEON support for ARM
+        ];
+
+        for (_, tokens) in proj_tokens.iter_tokens() {
+            let includes: Vec<String> = lexer_c::get_includes(tokens)
+                .into_iter()
+                .map(|i| header_gen::Token::tokens_to_string(i))
+                .collect();
+            
+            for (header_f_name, syslib) in c_lib_mappings {
+                if includes.iter().any(|inc| inc.contains(header_f_name)) {
+                    self.compile_cmd.sys_libs.insert(syslib.to_string());
+                }
+            }
         }
+
     }
 
     pub fn attach_ingot(&mut self, ingot: &KilnIngot) {
@@ -282,7 +284,7 @@ impl<'a> ProjBuilder<'a> {
             ("sh", "-c")
         };
 
-        let compile_cmd = self.compile_cmd.generate_compile_cmd(config::BuildType::exe).join(" ");
+        let compile_cmd = self.compile_cmd.generate_compile_cmd(config::BuildType::exe, build_prof).join(" ");
 
         let cmd = process::Command::new(shell)
             .arg(flag)
@@ -340,7 +342,7 @@ impl<'a> ProjBuilder<'a> {
         let ingot_md = IngotMetadata {
             metadata: Metadata {
                 ingot_deps,
-                sys_libs: vec![], // TODO -> Fill this out properly
+                sys_libs: self.compile_cmd.sys_libs.clone().into_iter().collect(),
                 staticlib_support: false,
                 source_support: true,
             }
@@ -354,7 +356,7 @@ impl<'a> ProjBuilder<'a> {
 }
 
 impl CompileCmdBuilder {
-    pub fn generate_compile_cmd(&self, build_type: config::BuildType) -> Vec<String> {
+    pub fn generate_compile_cmd(&self, build_type: config::BuildType, build_prof: BuildProfile) -> Vec<String> {
         let mut compile_cmd = vec![
             self.compiler.clone(),
         ];
@@ -363,8 +365,28 @@ impl CompileCmdBuilder {
             compile_cmd.push("-shared".to_string());
         }
 
-        compile_cmd.push(format!("\"{}\"", self.output_filename.clone().unwrap()));
+        match build_prof {
+            BuildProfile::Debug => {
+                for flag in &self.debug_compiler_flags {
+                    compile_cmd.push(flag.clone());
+                }
+            }
+            BuildProfile::Release => {
+                for flag in &self.release_compiler_flags {
+                    compile_cmd.push(flag.clone());
+                }
+            }
+        }
+
+        for flag in &self.shared_compiler_flags {
+            if !compile_cmd.contains(flag) {
+                compile_cmd.push(flag.clone());
+            }
+        }
+
         compile_cmd.push("-o".to_string());
+        compile_cmd.push(format!("\"{}\"", self.output_filename.clone().unwrap()));
+
 
         for static_lib in &self.static_libs {
             compile_cmd.push(format!("\"{}\"", static_lib));
@@ -379,7 +401,9 @@ impl CompileCmdBuilder {
             compile_cmd.push(format!("\"-L{}\"", dynamic_lib));
         }
         for sys_lib in &self.sys_libs {
-            compile_cmd.push(format!("\"{}\"", sys_lib));
+            if !compile_cmd.contains(sys_lib) {
+                compile_cmd.push(sys_lib.clone());
+            }
         }
 
         match build_type {

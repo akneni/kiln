@@ -1,4 +1,4 @@
-use crate::{header_gen, lexer_c};
+use crate::header_gen::{self, Token};
 
 use anyhow::{anyhow, Result};
 use std::{
@@ -69,23 +69,20 @@ pub fn check_files(source_type: &str, proj_tokens: &header_gen::ProjTokens) -> R
 
     let func_map = FunctionMap::new();
 
-    for (name, source_code) in proj_tokens.iter_source_code() {
+    for (name, tokens) in proj_tokens.iter_tokens() {
         if !name.ends_with(source_type) {
             continue;
         }
 
-        let mut curr_warnings = scan_file(&name, &source_code, &func_map);
+        let mut curr_warnings = scan_file(&name, &tokens, &func_map);
         warnings.append(&mut curr_warnings);
     }
 
     Ok(warnings)
 }
 
-fn scan_file(filename: &str, source_code: &str, func_map: &FunctionMap) -> Vec<Warning> {
+fn scan_file(filename: &str, tokens: &[Token], func_map: &FunctionMap) -> Vec<Warning> {
     let mut warnings = vec![];
-
-    let tokens = lexer_c::tokenize(source_code)
-        .unwrap();
 
     for (token_num, token) in tokens.iter().enumerate() {
         if tokens[token_num..].len() < 3 {
@@ -93,9 +90,11 @@ fn scan_file(filename: &str, source_code: &str, func_map: &FunctionMap) -> Vec<W
         }
 
         if let header_gen::Token::Object(obj) = token {
-            if tokens[token_num + 1] != header_gen::Token::OpenParen {
+            let idx = header_gen::next_non_whitespace_token(&tokens[token_num..]);
+            if tokens[token_num + idx] != header_gen::Token::OpenParen {
                 continue;
             }
+
             if let Some(safe_fn) = func_map.map.get(*obj) {
                 let warning = Warning {
                     warning_type: WarningType::UnsafeFunction,

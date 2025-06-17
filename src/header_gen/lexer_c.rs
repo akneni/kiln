@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::header_gen::{Token, TOKEN_MAPPING};
+use crate::header_gen::{Token, TOKEN_MAPPING, next_non_whitespace_token};
 use anyhow::{anyhow, Result};
 
 pub fn tokenize(code: &str) -> Result<Vec<Token>> {
@@ -582,19 +582,6 @@ fn skip_to_end_comment(tokens: &[Token], idx: &mut usize) {
         }
         *idx += 1;
     }
-}
-
-
-/// Passing the below list to this function would return `3` (gets the next token, not the current token)
-/// `[object-token-curr, whitespace, whitespace, object-token-next]`
-#[inline]
-fn next_non_whitespace_token(tokens: &[Token]) -> usize {
-    let mut idx = 1;
-    while idx < tokens.len() && matches!(tokens[idx], Token::Space | Token::Tab | Token::NewLine | Token::Comment(_)) {
-        idx += 1;
-    }
-
-    idx
 }
 
 #[cfg(test)]

@@ -29,10 +29,10 @@ pub struct Project {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildOptions {
-    debug_flags: Vec<String>,
-    release_flags: Vec<String>,
-    shared_flags: Vec<String>,
-    compiler_path: Option<String>,
+    pub debug_flags: Vec<String>,
+    pub release_flags: Vec<String>,
+    pub shared_flags: Vec<String>,
+    compiler: Option<String>,
     standard: Option<String>,
     kiln_static_analysis: Option<bool>,
 }
@@ -104,7 +104,7 @@ impl Config {
     }
 
     pub fn get_compiler_path(&self) -> String {
-        match &self.build_options.compiler_path {
+        match &self.build_options.compiler {
             Some(p) => {
                 p.clone()
             }
@@ -181,7 +181,7 @@ impl Default for BuildOptions {
             debug_flags,
             release_flags,
             shared_flags,
-            compiler_path: None,
+            compiler: None,
             kiln_static_analysis: None,
         }
     }

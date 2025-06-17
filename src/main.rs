@@ -161,7 +161,7 @@ async fn main() {
             }
 
             for &b_type in config.project.build_type.iter() {
-                if let Err(e) = handle_build(&profile, &config, b_type) {
+                if let Err(e) = handle_build(&profile, &config, &tokens, b_type) {
                     eprintln!(
                         "An error occurred while building the project (build mode {:?}):\n{}",
                         b_type, e
@@ -193,7 +193,7 @@ async fn main() {
                 eprintln!("An error occurred during static analysis:\n{}", e);
                 process::exit(1);
             }
-            if let Err(e) = handle_build(&profile, &config, config::BuildType::exe) {
+            if let Err(e) = handle_build(&profile, &config, &tokens, config::BuildType::exe) {
                 eprintln!("An error occurred while building the project:\n{}", e);
                 process::exit(1);
             }
@@ -222,14 +222,17 @@ async fn main() {
             for &b_type in config.project.build_type.iter() {
                 println!("BuildType: {:?}", b_type);
 
-                let mut builder = ProjBuilder::new(&config);
+                let mut builder = ProjBuilder::new(&config, &tokens);
                 if let Some(v) = &config.dependency {
                     for ingot in v {
                         builder.attach_ingot(ingot);
                     }
                 }
 
-                let compile_cmd = builder.compile_cmd.generate_compile_cmd(b_type);
+                let compile_cmd = builder.compile_cmd.generate_compile_cmd(
+                    b_type,
+                    build_sys::BuildProfile::from(&profile)
+                );
                 println!("{}\n", compile_cmd.join(" "));
             }
 
@@ -358,8 +361,8 @@ fn handle_warnings(config: &Config, proj_tokens: &ProjTokens) -> Result<Vec<safe
     Ok(warnings)
 }
 
-fn handle_build(profile: &str, config: &Config, build_type: config::BuildType) -> Result<()> {
-    let mut builder = ProjBuilder::new(config);
+fn handle_build(profile: &str, config: &Config, tokens: &ProjTokens, build_type: config::BuildType) -> Result<()> {
+    let mut builder = ProjBuilder::new(config, tokens);
 
     if let Some(ingots) = &config.dependency {
         for ingot in ingots {
@@ -570,7 +573,7 @@ fn handle_tests(profile: &str, config: &Config, proj_tokens: &ProjTokens, test_f
 
     let cwd = env::current_dir().unwrap();
 
-    let mut builder = ProjBuilder::new(config);
+    let mut builder = ProjBuilder::new(config, proj_tokens);
     if let Some(ingots) = &config.dependency {
         for ingot in ingots {
             builder.attach_ingot(ingot);

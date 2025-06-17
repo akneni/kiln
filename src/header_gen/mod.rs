@@ -1,6 +1,6 @@
 pub mod lexer_c;
 
-use std::{collections::{HashMap, HashSet}, fs, mem};
+use std::{collections::{HashMap, HashSet, hash_map}, fs, mem};
 
 use anyhow::{anyhow, Result};
 
@@ -378,25 +378,6 @@ impl<'self_> ProjTokens<'self_> {
 
         self.tokens.get(&filepath)
     }
-    
-    pub fn get_source_code<'a>(&'a self, filepath: &str) -> Option<&'a String> 
-        where 'a: 'self_
-    {
-        let mut filepath = filepath.to_string();
-        if let None = self.code_files.get(&filepath) {
-            filepath = match self.expand_filename(&filepath) {
-                Some(r) => r,
-                None => return None,
-            };
-        }
-        
-        let source_code = fs::read_to_string(&filepath).unwrap();
-        unsafe {
-            let code_files_ptr = &self.code_files as *const HashMap<String, Option<String>> as *mut HashMap<String, Option<String>>;
-            (*code_files_ptr).insert(filepath.clone(), Some(source_code));
-        }
-        self.code_files.get(&filepath).unwrap().as_ref()
-    }
 
     pub fn iter_tokens(&self) -> ProjTokensIter {
         let filepaths: Vec<String> = self.code_files
@@ -410,20 +391,10 @@ impl<'self_> ProjTokens<'self_> {
             idx: 0 
         }
     }
-
-    pub fn iter_source_code(&self) -> ProjScIter {
-        let filepaths: Vec<String> = self.code_files
-            .keys()
-            .map(|k| k.clone())
-            .collect();
-
-        ProjScIter {
-            proj_tokens: unsafe { mem::transmute(self as *const Self as *mut Self) }, 
-            filepaths, 
-            idx: 0 
-        }
+    
+    pub fn iter_filepaths(&self) -> hash_map::Keys<'_, String, Option<String>> {
+        self.code_files.keys()
     }
-
 }
 
 pub struct ProjTokensIter<'a> {
@@ -454,33 +425,6 @@ impl<'a> Iterator for ProjTokensIter<'a> {
         }
     }
 }
-
-// Project source code iterator
-pub struct ProjScIter<'a> {
-    proj_tokens: *mut ProjTokens<'a>,
-    filepaths: Vec<String>,
-    idx: usize,
-}
-
-impl<'a> Iterator for ProjScIter<'a> {
-    type Item = (String, &'a String);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.idx >= self.filepaths.len() {
-            return None;
-        }
-
-        let idx = self.idx;
-        self.idx += 1;
-
-        let source_code = unsafe {
-            let proj_sc_ptr = self.proj_tokens as *mut ProjTokens<'a>;
-            (*proj_sc_ptr).get_source_code(&self.filepaths[idx]).unwrap()
-        };
-        Some((self.filepaths[idx].clone(), source_code))
-    }
-}
-
 
 /// Returns an error if there are any duplicate definitions
 /// Otherwise, adds all definitions in `src` to `dst`
@@ -619,4 +563,17 @@ pub fn filter_out_includes<'a>(
             true
         })
         .collect()
+}
+
+
+/// Passing the below list to this function would return `3` (gets the next token, not the current token)
+/// `[object-token-curr, whitespace, whitespace, object-token-next]`
+#[inline]
+pub fn next_non_whitespace_token(tokens: &[Token]) -> usize {
+    let mut idx = 1;
+    while idx < tokens.len() && matches!(tokens[idx], Token::Space | Token::Tab | Token::NewLine | Token::Comment(_)) {
+        idx += 1;
+    }
+
+    idx
 }

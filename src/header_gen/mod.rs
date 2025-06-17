@@ -267,6 +267,70 @@ impl<'self_> ProjTokens<'self_> {
         }
         None
     }
+    
+    pub fn main_filepath(&self) -> Option<String> {
+        match &self.main_file {
+            Some((exists, filepath)) => {
+                if !exists {
+                    return None
+                } else {
+                    return Some(filepath.clone())
+                }
+            }
+            None => {
+                for (filepath, tokens) in self.iter_tokens() {
+                    let mut has_int = false;
+                    let mut has_main = false;
+                    let mut has_open_paren = false;
+                    let has_close_paren = false;
+                    
+                    for token in tokens {
+                        if !has_int {
+                            if let Token::Object("int") = token {
+                                has_int = true;
+                            }
+                        }
+                        else if !has_main {
+                            match token {                               
+                                Token::Object("main") => has_main = true,
+                                Token::Comment(_) |
+                                Token::Space |
+                                Token::Tab |
+                                Token::NewLine => {},
+                                _ => has_int = false,
+                            }
+                        }
+                        else if !has_open_paren {
+                            match token {                               
+                                Token::OpenParen => has_open_paren = true,
+                                Token::Comment(_) |
+                                Token::Space |
+                                Token::Tab |
+                                Token::NewLine => {},
+                                _ => {
+                                    has_int = false;
+                                    has_main = false;
+                                }
+                            }   
+                        }
+                        else if !has_close_paren {
+                            match token {                               
+                                Token::CloseParen => return Some(filepath),
+                                Token::Tick => {
+                                    has_int = false;
+                                    has_main = false;
+                                    has_open_paren = false;
+                                }
+                                _ => {}
+                            }  
+                        }
+                    }
+
+                }
+                None
+            }
+        }
+    }
 
     /// Returns None if there is no file in the project direcotry with the name specified
     pub fn get_tokens<'a>(&'a self, filepath: &str) -> Option<&'a Vec<Token<'self_>>> 
@@ -334,14 +398,14 @@ impl<'self_> ProjTokens<'self_> {
         self.code_files.get(&filepath).unwrap().as_ref()
     }
 
-    pub fn iter_tokens(&mut self) -> ProjTokensIter {
+    pub fn iter_tokens(&self) -> ProjTokensIter {
         let filepaths: Vec<String> = self.code_files
             .keys()
             .map(|k| k.clone())
             .collect();
 
         ProjTokensIter {
-            proj_tokens: unsafe { mem::transmute(self as *mut Self) }, 
+            proj_tokens: unsafe { mem::transmute(self as *const Self as *mut Self) }, 
             filepaths, 
             idx: 0 
         }
@@ -369,7 +433,7 @@ pub struct ProjTokensIter<'a> {
 }
 
 impl<'a> Iterator for ProjTokensIter<'a> {
-    type Item = &'a Vec<Token<'a>>;
+    type Item = (String, &'a Vec<Token<'a>>);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx >= self.filepaths.len() {
@@ -386,7 +450,7 @@ impl<'a> Iterator for ProjTokensIter<'a> {
 
         unsafe {
             let tokens_ptr: &'a Vec<Token<'a>> = mem::transmute(tokens_ptr);
-            Some(tokens_ptr)
+            Some((self.filepaths[idx].clone(), tokens_ptr))
         }
     }
 }

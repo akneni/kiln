@@ -18,7 +18,6 @@ use packaging::package_manager::{self, PkgError};
 use std::{env, fs, io::Write, path::Path, process, time};
 use strum::IntoEnumIterator;
 use testing::safety;
-use utils::Language;
 
 use crate::{build_sys::ProjBuilder, header_gen::ProjTokens};
 
@@ -241,6 +240,7 @@ async fn main() {
                 process::exit(1);
             }
             let config = config.unwrap();
+            let tokens = ProjTokens::new(&config);
 
             let mut files_to_test = vec![];
 
@@ -268,7 +268,7 @@ async fn main() {
             for file in &files_to_test {
                 println!("{a}\n{b:?}\n{a}", a=seperator, b=file);
 
-                let res = handle_tests("--debug", &config, file);
+                let res = handle_tests("--debug", &config, &tokens, file);
                 if let Err(err) = res {
                     println!("{}", err);
                 }
@@ -418,7 +418,7 @@ fn handle_execution(
 fn handle_gen_headers<'a>(config: &Config, mut files: Vec<String>, proj_tokens: &'a ProjTokens<'a>) -> Result<()> {
     let cwd = env::current_dir()?;
 
-    let inc_dir = cwd.join("include");
+    let inc_dir = &config.project.include_dirs[0];
 
     for i in 0..files.len() {
         let idx = files[i].rfind('/');
@@ -522,7 +522,7 @@ fn handle_gen_headers<'a>(config: &Config, mut files: Vec<String>, proj_tokens: 
         headers.push('\n');
         headers.push_str(&format!("#endif // {}_H", raw_name.to_uppercase()));
 
-        fs::write(inc_dir.join(&header_name), headers)?;
+        fs::write(Path::new(inc_dir).join(&header_name), headers)?;
 
         // Remove definitions from original C file to avoid duplicates
         let mut exclude_tokens = udts;
@@ -562,7 +562,7 @@ async fn handle_check_installs(config: &Config) {
     dbg!(timer.elapsed());
 }
 
-fn handle_tests(profile: &str, config: &Config, test_file: &str) -> Result<()> {
+fn handle_tests(profile: &str, config: &Config, proj_tokens: &ProjTokens, test_file: &str) -> Result<()> {
     if !profile.starts_with("--") {
         eprintln!("Error: profile must start with `--`");
         process::exit(1);
@@ -578,14 +578,11 @@ fn handle_tests(profile: &str, config: &Config, test_file: &str) -> Result<()> {
     }
 
     // Replace the original main file with the new main file
-    let mut main_file = "".to_string();
-    for f in &builder.compile_cmd.source_files {
-        if f.ends_with("main.c") {
-            main_file = f.clone();
-            break;
-        }
+    if let Some(main_filepath) = proj_tokens.main_filepath() {
+        let file_present = builder.compile_cmd.source_files.remove(&main_filepath);
+        assert!(file_present);
     }
-    builder.compile_cmd.source_files.remove(&main_file);
+
     builder.compile_cmd.source_files.insert(test_file.to_string());
 
     builder.build_exe(build_sys::BuildProfile::from(profile))?;

@@ -72,6 +72,7 @@ pub const STATIC_LIB_FE: &'static str = const {
 };
 
 /// File extension for the dynamic library
+#[allow(unused)]
 pub const DYNAMIC_LIB_FE: &'static str = const {
     #[cfg(target_os = "linux")] {
         ".so"

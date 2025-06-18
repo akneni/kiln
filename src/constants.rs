@@ -58,15 +58,18 @@ pub static SEPARATOR: Lazy<ColoredString> = Lazy::new(|| {
 
 /// File extension for the static library
 pub const STATIC_LIB_FE: &'static str = const {
-    #[cfg(target_os = "linux")] {
+    #[cfg(target_os = "linux")]
+    {
         ".a"
     }
 
-    #[cfg(target_os = "macos")] {
+    #[cfg(target_os = "macos")]
+    {
         ".a"
     }
 
-    #[cfg(target_os = "windows")] {
+    #[cfg(target_os = "windows")]
+    {
         ".lib"
     }
 };
@@ -74,30 +77,36 @@ pub const STATIC_LIB_FE: &'static str = const {
 /// File extension for the dynamic library
 #[allow(unused)]
 pub const DYNAMIC_LIB_FE: &'static str = const {
-    #[cfg(target_os = "linux")] {
+    #[cfg(target_os = "linux")]
+    {
         ".so"
     }
 
-    #[cfg(target_os = "macos")] {
+    #[cfg(target_os = "macos")]
+    {
         ".dylib"
     }
 
-    #[cfg(target_os = "windows")] {
+    #[cfg(target_os = "windows")]
+    {
         ".dll"
     }
 };
 
 /// File extension for an executable file
 pub const EXECUTABLE_FE: &'static str = const {
-    #[cfg(target_os = "linux")] {
-        ""
-    }
-    
-    #[cfg(target_os = "macos")] {
+    #[cfg(target_os = "linux")]
+    {
         ""
     }
 
-    #[cfg(target_os = "windows")] {
+    #[cfg(target_os = "macos")]
+    {
+        ""
+    }
+
+    #[cfg(target_os = "windows")]
+    {
         ".exe"
     }
 };

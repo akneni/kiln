@@ -15,9 +15,12 @@ use constants::{CONFIG_FILE, DEV_ENV_CFG_FILE, PACKAGE_DIR, SEPARATOR};
 use header_gen::lexer_c;
 use local_dev::{dev_env_config, editors};
 use packaging::package_manager::{self, PkgError};
-use std::{env, fs, io::Write, path::Path, process, time};
+use std::{env, fs, io::Write, path::Path, process};
 use strum::IntoEnumIterator;
 use testing::safety;
+
+#[cfg(debug_assertions)]
+use std::time;
 
 use crate::{build_sys::ProjBuilder, header_gen::ProjTokens};
 
@@ -28,13 +31,10 @@ async fn main() {
     if raw_cli_args.len() < 2 {
         // Let the program fail and have Clap display it's help message
         cli_args = cli::CliCommand::parse();
-    } 
-    else if matches!(raw_cli_args[1].as_str(), "run" | "build" | "build-trace") {
+    } else if matches!(raw_cli_args[1].as_str(), "run" | "build" | "build-trace") {
         let mut profile = "--debug".to_string();
         let mut args = vec![];
-        if raw_cli_args.len() >= 3
-            && raw_cli_args[2].starts_with("--")
-            && raw_cli_args[2].len() > 2
+        if raw_cli_args.len() >= 3 && raw_cli_args[2].starts_with("--") && raw_cli_args[2].len() > 2
         {
             // Extracts compilation profile
             profile = raw_cli_args[2].clone();
@@ -43,8 +43,7 @@ async fn main() {
             // Extracts passthrough CLI arguments (kiln run)
             assert!([2_usize, 3_usize].contains(&idx));
             args = raw_cli_args[(idx + 1)..].to_vec();
-        } 
-        else {
+        } else {
             // verify structure of CLI arguments
             if !(raw_cli_args.len() <= 3) {
                 println!("Invalid CLI arguments");
@@ -54,8 +53,7 @@ async fn main() {
         cli_args = cli::CliCommand {
             command: cli::Commands::new(&raw_cli_args[1], &profile, args),
         }
-    } 
-    else {
+    } else {
         cli_args = cli::CliCommand::parse();
     }
 
@@ -121,7 +119,7 @@ async fn main() {
                     PkgError::Reqwest(e) => {
                         let e_str = format!("{}", e);
                         if e_str.contains("TimedOut") {
-                            dbg!(e);
+                            #[cfg(debug_assertions)] dbg!(e);
                             eprintln!("Request timed out, please check internet connection");
                         } else {
                             eprintln!("An unknown error occurred:\n{}", err);
@@ -170,10 +168,7 @@ async fn main() {
                 }
             }
         }
-        cli::Commands::Run {
-            profile,
-            args,
-        } => {
+        cli::Commands::Run { profile, args } => {
             if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
                 println!("{}", e);
                 process::exit(1);
@@ -203,7 +198,6 @@ async fn main() {
                 eprintln!("Code build successfully, but failed to execute:\n{}", e);
                 process::exit(1);
             }
-            
         }
         cli::Commands::BuildTrace { profile } => {
             if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
@@ -229,13 +223,10 @@ async fn main() {
                     }
                 }
 
-                let compile_cmd = builder.compile_cmd.generate_compile_cmd(
-                    b_type,
-                    build_sys::BuildProfile::from(&profile)
-                );
+                let compile_cmd =
+                    builder.generate_compile_cmd(b_type, build_sys::BuildProfile::from(&profile));
                 println!("{}\n", compile_cmd.join(" "));
             }
-
         }
         cli::Commands::Test { tests } => {
             if let Err(e) = build_sys::validate_proj_repo(cwd.as_path()) {
@@ -249,18 +240,15 @@ async fn main() {
 
             if let Some(tests) = tests.as_ref() {
                 files_to_test.extend_from_slice(&tests);
-            } 
-            else if let Ok(test_dir) = Path::new("tests").read_dir() {
+            } else if let Ok(test_dir) = Path::new("tests").read_dir() {
                 for file in test_dir {
-                    if let Ok(file) = file {                           
+                    if let Ok(file) = file {
                         let filepath = file.path();
-                        let filepath = filepath.to_str()
-                            .unwrap();
+                        let filepath = filepath.to_str().unwrap();
                         files_to_test.push(filepath.to_string());
                     }
                 }
-            } 
-            else {
+            } else {
                 eprintln!("unable to read test directory");
                 process::exit(1);
             }
@@ -269,7 +257,7 @@ async fn main() {
             println!("\n\n");
 
             for file in &files_to_test {
-                println!("{a}\n{b:?}\n{a}", a=seperator, b=file);
+                println!("{a}\n{b:?}\n{a}", a = seperator, b = file);
 
                 let res = handle_tests("--debug", &config, &tokens, file);
                 if let Err(err) = res {
@@ -361,7 +349,12 @@ fn handle_warnings(config: &Config, proj_tokens: &ProjTokens) -> Result<Vec<safe
     Ok(warnings)
 }
 
-fn handle_build(profile: &str, config: &Config, tokens: &ProjTokens, build_type: config::BuildType) -> Result<()> {
+fn handle_build(
+    profile: &str,
+    config: &Config,
+    tokens: &ProjTokens,
+    build_type: config::BuildType,
+) -> Result<()> {
     let mut builder = ProjBuilder::new(config, tokens);
 
     if let Some(ingots) = &config.dependency {
@@ -418,7 +411,11 @@ fn handle_execution(
     Ok(())
 }
 
-fn handle_gen_headers<'a>(config: &Config, mut files: Vec<String>, proj_tokens: &'a ProjTokens<'a>) -> Result<()> {
+fn handle_gen_headers<'a>(
+    config: &Config,
+    mut files: Vec<String>,
+    proj_tokens: &'a ProjTokens<'a>,
+) -> Result<()> {
     let cwd = env::current_dir()?;
 
     let inc_dir = &config.project.include_dirs[0];
@@ -426,7 +423,7 @@ fn handle_gen_headers<'a>(config: &Config, mut files: Vec<String>, proj_tokens: 
     for i in 0..files.len() {
         let idx = files[i].rfind('/');
         if let Some(idx) = idx {
-            files[i] = files[i][(idx+1)..].to_string();
+            files[i] = files[i][(idx + 1)..].to_string();
         }
     }
 
@@ -436,7 +433,10 @@ fn handle_gen_headers<'a>(config: &Config, mut files: Vec<String>, proj_tokens: 
         let filepath_str = filepath.to_str().unwrap().to_string();
 
         if matches!(file_ext, "cpp" | "cuda") {
-            println!("WARNING: header gen for .{} files are not supported", file_ext);
+            println!(
+                "WARNING: header gen for .{} files are not supported",
+                file_ext
+            );
         }
 
         let header_name = format!("{}.h", raw_name);
@@ -503,10 +503,11 @@ fn handle_gen_headers<'a>(config: &Config, mut files: Vec<String>, proj_tokens: 
         headers.push('\n');
 
         for &func in &fn_defs {
-            let inline_idx = func.iter()
+            let inline_idx = func
+                .iter()
                 .enumerate()
                 .find(|&i| *(i.1) == header_gen::Token::Object("inline"));
-            
+
             if let Some((inline_idx, _)) = inline_idx {
                 // turn `inline void XXX() {}` in .c into `extern inline void XXX();` in .h
                 let mut func = func.to_vec();
@@ -545,6 +546,7 @@ fn handle_gen_headers<'a>(config: &Config, mut files: Vec<String>, proj_tokens: 
 /// Checks the deps listed in Kiln.Toml config for any that aren't installed globally.
 /// If it fins finds any such packages, it installs them.
 async fn handle_check_installs(config: &Config) {
+    #[cfg(debug_assertions)]
     let timer = time::Instant::now();
 
     let mut config = config.clone();
@@ -565,7 +567,12 @@ async fn handle_check_installs(config: &Config) {
     dbg!(timer.elapsed());
 }
 
-fn handle_tests(profile: &str, config: &Config, proj_tokens: &ProjTokens, test_file: &str) -> Result<()> {
+fn handle_tests(
+    profile: &str,
+    config: &Config,
+    proj_tokens: &ProjTokens,
+    test_file: &str,
+) -> Result<()> {
     if !profile.starts_with("--") {
         eprintln!("Error: profile must start with `--`");
         process::exit(1);
@@ -586,7 +593,10 @@ fn handle_tests(profile: &str, config: &Config, proj_tokens: &ProjTokens, test_f
         assert!(file_present);
     }
 
-    builder.compile_cmd.source_files.insert(test_file.to_string());
+    builder
+        .compile_cmd
+        .source_files
+        .insert(test_file.to_string());
 
     builder.build_exe(build_sys::BuildProfile::from(profile))?;
 
@@ -607,6 +617,6 @@ fn handle_tests(profile: &str, config: &Config, proj_tokens: &ProjTokens, test_f
         .map_err(|e| anyhow!("Failed to run {:?} binary: {}", bin_path, e))?;
 
     fs::remove_file(bin_path)?;
-    
+
     Ok(())
 }

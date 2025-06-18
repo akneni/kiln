@@ -50,9 +50,9 @@ pub fn extract_filename<'a>(filepath: &'a str) -> &'a str {
     } else {
         "/"
     };
-    
+
     match filepath.rsplit_once(delimiter) {
         Some((_, filename)) => filename,
-        None => filepath
+        None => filepath,
     }
 }

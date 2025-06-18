@@ -1,11 +1,7 @@
 use crate::header_gen::{self, Token};
 
 use anyhow::{anyhow, Result};
-use std::{
-    collections::HashMap,
-    env,
-    fmt::Debug,
-};
+use std::{collections::HashMap, env, fmt::Debug};
 
 /// This checks if unsafe functions exist within a line using general string parsing
 /// This is messy and prone to false positives.
@@ -56,7 +52,10 @@ pub struct Warning {
     pub warning_type: WarningType,
 }
 
-pub fn check_files(source_type: &str, proj_tokens: &header_gen::ProjTokens) -> Result<Vec<Warning>> {
+pub fn check_files(
+    source_type: &str,
+    proj_tokens: &header_gen::ProjTokens,
+) -> Result<Vec<Warning>> {
     let mut warnings = vec![];
     let mut source_dir = env::current_dir()?;
     source_dir.push("src");
@@ -109,7 +108,6 @@ fn scan_file(filename: &str, tokens: &[Token], func_map: &FunctionMap) -> Vec<Wa
                 warnings.push(warning);
             }
         }
-        
     }
 
     warnings

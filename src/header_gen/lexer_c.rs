@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use crate::header_gen::{Token, TOKEN_MAPPING, next_non_whitespace_token};
+use crate::header_gen::{next_non_whitespace_token, Token, TOKEN_MAPPING};
 use anyhow::{anyhow, Result};
+use std::collections::HashMap;
 
 pub fn tokenize(code: &str) -> Result<Vec<Token>> {
     let code_bytes = code.as_bytes();
@@ -33,7 +33,7 @@ pub fn tokenize(code: &str) -> Result<Vec<Token>> {
                 continue;
             }
             '/' => {
-                if matches!(code_bytes[idx+1] as char, '*' | '/') {
+                if matches!(code_bytes[idx + 1] as char, '*' | '/') {
                     let len = find_len_comment(&code_bytes[idx..]);
                     let val = &code[idx..(idx + len)];
                     let tok = Token::Comment(val);
@@ -107,17 +107,18 @@ fn find_len_string_literal(code_bytes: &[u8]) -> Result<usize> {
 
 /// `code_bytes` must be a slice such that the start of the slice is the same as the start of the comment (first characters must be `//` or `/*`)
 fn find_len_comment(code_bytes: &[u8]) -> usize {
-    #[cfg(debug_assertions)] {
-        if code_bytes[0] != '/' as u8 || !(matches!(code_bytes[1] as char, '*' | '/')){
+    #[cfg(debug_assertions)]
+    {
+        if code_bytes[0] != '/' as u8 || !(matches!(code_bytes[1] as char, '*' | '/')) {
             panic!("Not a comment");
-        }    
+        }
     }
 
     let mut idx = 2;
     match code_bytes[1] as char {
         '*' => {
             while idx < code_bytes.len() {
-                if code_bytes[idx] == '*' as u8 && code_bytes[idx+1] == '/' as u8 {
+                if code_bytes[idx] == '*' as u8 && code_bytes[idx + 1] == '/' as u8 {
                     idx += 2;
                     break;
                 }
@@ -135,13 +136,12 @@ fn find_len_comment(code_bytes: &[u8]) -> usize {
     idx
 }
 
-
-/// Reconstructs the soruce code excluding the ranges specified 
+/// Reconstructs the soruce code excluding the ranges specified
 pub fn reconstruct_source(tokens: &[Token], exclude_ranges: &[&[Token]]) -> String {
     let mut new_tokens = vec![];
-    
+
     let mut exlcude_map: HashMap<&[Token], Vec<&[Token]>> = HashMap::new();
-    
+
     for &range in exclude_ranges {
         if range.len() < 3 {
             unreachable!();
@@ -151,9 +151,8 @@ pub fn reconstruct_source(tokens: &[Token], exclude_ranges: &[&[Token]]) -> Stri
         entry.push(range);
     }
 
-
     let mut idx = 0;
-    
+
     while idx < tokens.len() {
         if idx + 3 >= tokens.len() {
             new_tokens.push(tokens[idx]);
@@ -161,14 +160,14 @@ pub fn reconstruct_source(tokens: &[Token], exclude_ranges: &[&[Token]]) -> Stri
             continue;
         }
 
-        if let Some(vec) = exlcude_map.get(&tokens[idx..(idx+3)]) {
+        if let Some(vec) = exlcude_map.get(&tokens[idx..(idx + 3)]) {
             let mut skip_len = 0;
 
             for &range in vec {
                 if range.len() > tokens[idx..].len() {
                     continue;
                 }
-                if range == &tokens[idx..(idx+range.len())] {
+                if range == &tokens[idx..(idx + range.len())] {
                     skip_len = range.len();
                     break;
                 }
@@ -182,7 +181,6 @@ pub fn reconstruct_source(tokens: &[Token], exclude_ranges: &[&[Token]]) -> Stri
 
         new_tokens.push(tokens[idx]);
         idx += 1;
-    
     }
 
     Token::tokens_to_string(&new_tokens)
@@ -213,7 +211,11 @@ pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                 idx = next_idx;
                 continue;
             } else if obj == "include" {
-                skip_to_oneof(tokens, &[Token::GreaterThan, Token::Literal("\"")], &mut next_idx);
+                skip_to_oneof(
+                    tokens,
+                    &[Token::GreaterThan, Token::Literal("\"")],
+                    &mut next_idx,
+                );
                 idx = next_idx;
                 continue;
             } else if obj == "define" {
@@ -221,7 +223,11 @@ pub fn get_fn_def<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                 idx = next_idx;
                 continue;
             } else if obj == "static" {
-                skip_to_oneof(tokens, &[Token::OpenParen, Token::OpenCurlyBrace], &mut next_idx);
+                skip_to_oneof(
+                    tokens,
+                    &[Token::OpenParen, Token::OpenCurlyBrace],
+                    &mut next_idx,
+                );
                 idx = next_idx;
                 continue;
             } else if matches!(obj, "return" | "if") {
@@ -270,7 +276,7 @@ pub fn get_includes<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
         if let Token::Comment(_) = tokens[next_idx] {
             skip_to_end_comment(tokens, &mut next_idx);
             if next_idx >= tokens.len() {
-                break
+                break;
             }
         }
 
@@ -280,22 +286,17 @@ pub fn get_includes<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
 
         if let Token::HashTag = tokens[next_idx] {
             let next_nwt = next_non_whitespace_token(&tokens[next_idx..]);
-            if tokens[next_idx+next_nwt] != Token::Object("include") {
+            if tokens[next_idx + next_nwt] != Token::Object("include") {
                 idx += next_nwt;
                 continue;
             }
 
             let mut end = next_idx + next_nwt;
-            skip_to_oneof(
-                tokens,
-                &[Token::GreaterThan, Token::Literal("")],
-                &mut end,
-            );
+            skip_to_oneof(tokens, &[Token::GreaterThan, Token::Literal("")], &mut end);
 
             includes.push(&tokens[idx..(end + 1)]);
             idx = end + 1;
-        }
-        else {
+        } else {
             idx += 1;
         }
     }
@@ -322,7 +323,7 @@ pub fn get_udts<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
             if !matches!(obj, "typedef" | "struct" | "union" | "enum") {
                 idx += 1;
                 continue;
-            } 
+            }
 
             let next_idx = if obj == "typedef" {
                 let x = idx + next_non_whitespace_token(&tokens[idx..]);
@@ -330,8 +331,7 @@ pub fn get_udts<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                     unreachable!();
                 }
                 x
-            }
-            else {
+            } else {
                 idx
             };
 
@@ -340,9 +340,7 @@ pub fn get_udts<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                 true,  // Contains no `=` characters
             ];
             match tokens[next_idx] {
-                Token::Object("struct") |
-                Token::Object("enum") |
-                Token::Object("union") => {
+                Token::Object("struct") | Token::Object("enum") | Token::Object("union") => {
                     idx = next_idx;
                     let mut curlybrace_stack = 0;
 
@@ -367,7 +365,7 @@ pub fn get_udts<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                                 }
                             }
                             Token::Equal => conditions[1] = false,
-                            _ => {},
+                            _ => {}
                         }
                         idx += 1;
                     }
@@ -376,8 +374,7 @@ pub fn get_udts<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
                     idx = next_idx;
                 }
             }
-        }
-        else {
+        } else {
             idx += 1;
         }
     }
@@ -391,9 +388,8 @@ pub fn get_defines<'a>(tokens: &'a Vec<Token>) -> Vec<&'a [Token<'a>]> {
     let mut idx: usize = 0;
 
     while idx < tokens.len() {
-        if 
-            tokens[idx] != Token::HashTag &&
-            std::mem::discriminant(&tokens[idx]) != std::mem::discriminant(&Token::Comment(""))
+        if tokens[idx] != Token::HashTag
+            && std::mem::discriminant(&tokens[idx]) != std::mem::discriminant(&Token::Comment(""))
         {
             let valid_prefixes = &[Token::HashTag, Token::Comment("")];
             skip_to_oneof(tokens, valid_prefixes, &mut idx);
@@ -431,12 +427,10 @@ pub fn get_udt_name<'a>(tokens: &'a [Token]) -> &'a str {
 
     let mut idx = 0;
     let mut num_unclosed_braces = 0;
-    
+
     while idx < tokens.len() {
         match tokens[idx] {
-            Token::Object("struct") |
-            Token::Object("enum") |
-            Token::Object("union") => {
+            Token::Object("struct") | Token::Object("enum") | Token::Object("union") => {
                 let next_idx = idx + next_non_whitespace_token(&tokens[idx..]);
 
                 if next_idx + 1 >= tokens.len() {
@@ -487,7 +481,7 @@ pub fn get_define_name<'a>(tokens: &'a [Token]) -> &'a str {
 
     let mut define_seen = false;
 
-    for &t in &tokens[(idx+1)..] {
+    for &t in &tokens[(idx + 1)..] {
         match t {
             Token::Object("define") => {
                 if define_seen {
@@ -498,15 +492,13 @@ pub fn get_define_name<'a>(tokens: &'a [Token]) -> &'a str {
             Token::Object(obj) => {
                 if define_seen {
                     return obj;
-                }
-                else {
+                } else {
                     unreachable!("Token string is not a valid define macro (3)");
                 }
             }
             _ => {}
         }
     }
-
 
     unreachable!("Token string is not a valid define macro (4)");
 }
@@ -527,7 +519,7 @@ pub fn get_include_name<'a>(tokens: &'a [Token]) -> String {
             let mut end_idx = idx;
             skip_to(tokens, Token::GreaterThan, &mut end_idx);
 
-            return Token::tokens_to_string(&tokens[(idx+1)..end_idx]);
+            return Token::tokens_to_string(&tokens[(idx + 1)..end_idx]);
         }
         Token::Literal(s) => {
             return s.trim_end_matches('"').to_string();
@@ -564,18 +556,16 @@ fn skip_to_oneof(tokens: &[Token], targets: &[Token], idx: &mut usize) {
 }
 
 /// If we have a block commant (or multiple single line comments seperated by no more than a single \n character),
-/// this function will skip to the end of all of them (including the trailing newline if it exists). 
+/// this function will skip to the end of all of them (including the trailing newline if it exists).
 fn skip_to_end_comment(tokens: &[Token], idx: &mut usize) {
     assert_eq!(
-        std::mem::discriminant(&tokens[*idx]), 
+        std::mem::discriminant(&tokens[*idx]),
         std::mem::discriminant(&Token::Comment(""))
     );
 
-    while
-        *idx < tokens.len() && (
-            std::mem::discriminant(&tokens[*idx]) == std::mem::discriminant(&Token::Comment("")) ||
-            tokens[*idx] == Token::NewLine
-        )
+    while *idx < tokens.len()
+        && (std::mem::discriminant(&tokens[*idx]) == std::mem::discriminant(&Token::Comment(""))
+            || tokens[*idx] == Token::NewLine)
     {
         if tokens[*idx] == Token::NewLine && tokens[*idx + 1] == Token::NewLine {
             break;

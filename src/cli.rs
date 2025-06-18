@@ -25,7 +25,7 @@ pub enum Commands {
     },
     GenHeaders {
         #[arg()]
-        args: Vec<String>
+        args: Vec<String>,
     },
     Add {
         dep_uri: String,
@@ -49,7 +49,7 @@ pub enum Commands {
     },
 
     Test {
-        tests: Option<Vec<String>>
+        tests: Option<Vec<String>>,
     },
     LocalDev {
         #[command(subcommand)]
@@ -67,8 +67,8 @@ impl Commands {
                 profile: profile.to_string(),
                 args,
             },
-            "build-trace" => Self::BuildTrace { 
-                profile: profile.to_string() 
+            "build-trace" => Self::BuildTrace {
+                profile: profile.to_string(),
             },
             _ => panic!("Parameter `variant` must be one of 'build' or 'run'"),
         }

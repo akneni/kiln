@@ -2,17 +2,17 @@ use crate::config::{self, KilnIngot};
 use crate::constants::PACKAGE_CONFIG_FILE;
 use crate::header_gen::lexer_c;
 use crate::packaging::ingot::{IngotMetadata, Metadata};
-use crate::{constants, header_gen, utils};
 use crate::utils::Language;
 use crate::{config::Config, constants::CONFIG_FILE};
+use crate::{constants, header_gen, utils};
 
 use anyhow::{anyhow, Result};
 use std::collections::HashSet;
-use std::process;
+use std::{env, process};
 use std::{fs, path::Path};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BuildProfile  {
+pub enum BuildProfile {
     Debug,
     Release,
 }
@@ -99,7 +99,6 @@ pub fn validate_proj_repo(path: &Path) -> Result<()> {
     Ok(())
 }
 
-
 #[derive(Debug)]
 pub struct ProjBuilder<'a> {
     config: &'a Config,
@@ -115,7 +114,6 @@ pub struct CompileCmdBuilder {
     dynamic_libs: HashSet<String>,
     sys_libs: HashSet<String>,
     compiler: String,
-    output_filename: Option<String>,
     c_standard: Option<String>,
 
     debug_compiler_flags: HashSet<String>,
@@ -136,7 +134,7 @@ impl<'a> ProjBuilder<'a> {
             }
         }
 
-        if let Some(staticlib_dirs) = &config.project.staticlib_dirs  {
+        if let Some(staticlib_dirs) = &config.project.staticlib_dirs {
             for static_lib in staticlib_dirs {
                 for file in fs::read_dir(static_lib).unwrap() {
                     let file = file.unwrap();
@@ -144,11 +142,16 @@ impl<'a> ProjBuilder<'a> {
                         continue;
                     }
 
-                    if !file.file_name().to_str().unwrap().ends_with(constants::STATIC_LIB_FE) {
+                    if !file
+                        .file_name()
+                        .to_str()
+                        .unwrap()
+                        .ends_with(constants::STATIC_LIB_FE)
+                    {
                         continue;
                     }
 
-                    let filepath = file.path();
+                    let filepath = fs::canonicalize(file.path()).unwrap();
                     let filepath = filepath.to_str().unwrap().to_string();
 
                     compile_cmd.static_libs.insert(filepath);
@@ -157,12 +160,39 @@ impl<'a> ProjBuilder<'a> {
         }
 
         for include_dir in &config.project.include_dirs {
-            compile_cmd.include_dirs.insert(include_dir.clone());
+            let include_dir = Path::new(include_dir);
+            if !include_dir.exists() {
+                fs::create_dir_all(include_dir).unwrap();
+            }
+            else if !include_dir.is_dir() {
+                eprintln!("Error: include directory {:?} is not actually a directory", include_dir);
+            }
+            let include_dir = fs::canonicalize(include_dir).unwrap();
+            let include_dir = include_dir
+                .to_str()
+                .unwrap()
+                .to_string();
+            compile_cmd.include_dirs.insert(include_dir);
         }
 
-        compile_cmd.debug_compiler_flags = config.build_options.debug_flags.clone().into_iter().collect();
-        compile_cmd.release_compiler_flags = config.build_options.release_flags.clone().into_iter().collect();
-        compile_cmd.shared_compiler_flags = config.build_options.shared_flags.clone().into_iter().collect();
+        compile_cmd.debug_compiler_flags = config
+            .build_options
+            .debug_flags
+            .clone()
+            .into_iter()
+            .collect();
+        compile_cmd.release_compiler_flags = config
+            .build_options
+            .release_flags
+            .clone()
+            .into_iter()
+            .collect();
+        compile_cmd.shared_compiler_flags = config
+            .build_options
+            .shared_flags
+            .clone()
+            .into_iter()
+            .collect();
 
         compile_cmd.c_standard = config.get_standard();
 
@@ -202,21 +232,18 @@ impl<'a> ProjBuilder<'a> {
                 .into_iter()
                 .map(|i| header_gen::Token::tokens_to_string(i))
                 .collect();
-            
+
             for (header_f_name, syslib) in c_lib_mappings {
                 if includes.iter().any(|inc| inc.contains(header_f_name)) {
                     self.compile_cmd.sys_libs.insert(syslib.to_string());
                 }
             }
         }
-
     }
 
     pub fn attach_ingot(&mut self, ingot: &KilnIngot) {
         let path_buf = ingot.get_global_path();
-        let path = path_buf.to_str()
-            .unwrap()
-            .to_string();
+        let path = path_buf.to_str().unwrap().to_string();
 
         if !self.ingots.insert(path.clone()) {
             // Runs if the path already exists
@@ -234,13 +261,12 @@ impl<'a> ProjBuilder<'a> {
 
                     let filename = file.file_name();
                     let filename = filename.to_str().unwrap();
-                    
+
                     let target_f = file.path().to_str().unwrap().to_string();
 
                     if filename.ends_with(self.config.project.language_ext()) {
                         self.compile_cmd.source_files.insert(target_f);
-                    }
-                    else if filename.ends_with(constants::STATIC_LIB_FE) {
+                    } else if filename.ends_with(constants::STATIC_LIB_FE) {
                         self.compile_cmd.static_libs.insert(target_f);
                     }
                 }
@@ -250,11 +276,11 @@ impl<'a> ProjBuilder<'a> {
             }
         }
 
-        // Add include & dynamic library directories to compile command. 
-        let ingot_dir_s = ingot_dir.to_str()
-            .unwrap()
-            .to_string();
-        self.compile_cmd.dynamic_libs.insert(format!("-L{}", ingot_dir_s));
+        // Add include & dynamic library directories to compile command.
+        let ingot_dir_s = ingot_dir.to_str().unwrap().to_string();
+        self.compile_cmd
+            .dynamic_libs
+            .insert(format!("-L{}", ingot_dir_s));
         self.compile_cmd.include_dirs.insert(ingot_dir_s);
 
         let ingot_md_path = ingot_dir.join(PACKAGE_CONFIG_FILE);
@@ -265,7 +291,7 @@ impl<'a> ProjBuilder<'a> {
             self.compile_cmd.sys_libs.insert(sys_lib.clone());
         }
 
-        // Recursively does the same for all the other ingots. 
+        // Recursively does the same for all the other ingots.
         for upstream_ingot in &ingot_md.metadata.ingot_deps {
             self.attach_ingot(upstream_ingot);
         }
@@ -275,19 +301,15 @@ impl<'a> ProjBuilder<'a> {
         let mut output_file = self.config.project.name.to_string();
         output_file.push_str(constants::EXECUTABLE_FE);
 
-        let output_filepath = Path::new("build")
-            .join(build_prof.to_str(false))
-            .join(output_file);
-        
-        self.compile_cmd.output_filename = Some(output_filepath.to_str().unwrap().to_string());
-
         let (shell, flag) = if cfg!(target_os = "windows") {
             ("cmd", "/C")
         } else {
             ("sh", "-c")
         };
 
-        let compile_cmd = self.compile_cmd.generate_compile_cmd(config::BuildType::exe, build_prof).join(" ");
+        let compile_cmd = self
+            .generate_compile_cmd(config::BuildType::exe, build_prof)
+            .join(" ");
 
         let cmd = process::Command::new(shell)
             .arg(flag)
@@ -312,7 +334,7 @@ impl<'a> ProjBuilder<'a> {
         }
 
         fs::create_dir_all(&ingot_dir).unwrap();
-        
+
         for src_file in &self.compile_cmd.source_files {
             let src_filename = utils::extract_filename(src_file);
             fs::copy(&src_file, ingot_dir.join(src_filename)).unwrap();
@@ -329,11 +351,9 @@ impl<'a> ProjBuilder<'a> {
                 if !header_file.file_type().unwrap().is_file() {
                     continue;
                 }
-                let headerfile_name = header_file.file_name()
-                    .into_string()
-                    .unwrap();
+                let headerfile_name = header_file.file_name().into_string().unwrap();
 
-                fs::copy( header_file.path(), ingot_dir.join(headerfile_name)).unwrap();
+                fs::copy(header_file.path(), ingot_dir.join(headerfile_name)).unwrap();
             }
         }
 
@@ -348,21 +368,23 @@ impl<'a> ProjBuilder<'a> {
                 sys_libs: self.compile_cmd.sys_libs.clone().into_iter().collect(),
                 staticlib_support: false,
                 source_support: true,
-            }
+            },
         };
 
         let ingot_md_str = toml::to_string_pretty(&ingot_md).unwrap();
-        fs::write(ingot_dir.join(constants::PACKAGE_CONFIG_FILE), &ingot_md_str)
-            .unwrap();
+        fs::write(
+            ingot_dir.join(constants::PACKAGE_CONFIG_FILE),
+            &ingot_md_str,
+        )
+        .unwrap();
     }
 
-}
-
-impl CompileCmdBuilder {
-    pub fn generate_compile_cmd(&self, build_type: config::BuildType, build_prof: BuildProfile) -> Vec<String> {
-        let mut compile_cmd = vec![
-            self.compiler.clone(),
-        ];
+    pub fn generate_compile_cmd(
+        &self,
+        build_type: config::BuildType,
+        build_prof: BuildProfile,
+    ) -> Vec<String> {
+        let mut compile_cmd = vec![self.compile_cmd.compiler.clone()];
 
         if let config::BuildType::dynamic_library = build_type {
             compile_cmd.push("-shared".to_string());
@@ -370,45 +392,51 @@ impl CompileCmdBuilder {
 
         match build_prof {
             BuildProfile::Debug => {
-                for flag in &self.debug_compiler_flags {
+                for flag in &self.compile_cmd.debug_compiler_flags {
                     compile_cmd.push(flag.clone());
                 }
             }
             BuildProfile::Release => {
-                for flag in &self.release_compiler_flags {
+                for flag in &self.compile_cmd.release_compiler_flags {
                     compile_cmd.push(flag.clone());
                 }
             }
         }
 
-        for flag in &self.shared_compiler_flags {
+        for flag in &self.compile_cmd.shared_compiler_flags {
             if !compile_cmd.contains(flag) {
                 compile_cmd.push(flag.clone());
             }
         }
 
-        compile_cmd.push("-o".to_string());
-        compile_cmd.push(format!("\"{}\"", self.output_filename.clone().unwrap()));
+        let mut output_file = env::current_dir().unwrap();
+        output_file.push("build");
+        output_file.push(build_prof.to_str(false));
+        output_file.push(&self.config.project.name);
+        let output_file = output_file.to_str().unwrap();
 
-        if let Some(c_standard) = &self.c_standard {
+        compile_cmd.push("-o".to_string());
+        compile_cmd.push(format!("\"{}\"", output_file));
+
+        if let Some(c_standard) = &self.compile_cmd.c_standard {
             if !compile_cmd.contains(c_standard) {
                 compile_cmd.push(c_standard.clone());
             }
         }
 
-        for static_lib in &self.static_libs {
+        for static_lib in &self.compile_cmd.static_libs {
             compile_cmd.push(format!("\"{}\"", static_lib));
         }
-        for source_file in &self.source_files {
+        for source_file in &self.compile_cmd.source_files {
             compile_cmd.push(format!("\"{}\"", source_file));
         }
-        for include_dir in &self.include_dirs {
+        for include_dir in &self.compile_cmd.include_dirs {
             compile_cmd.push(format!("\"-I{}\"", include_dir));
         }
-        for dynamic_lib in &self.dynamic_libs {
+        for dynamic_lib in &self.compile_cmd.dynamic_libs {
             compile_cmd.push(format!("\"-L{}\"", dynamic_lib));
         }
-        for sys_lib in &self.sys_libs {
+        for sys_lib in &self.compile_cmd.sys_libs {
             if !compile_cmd.contains(sys_lib) {
                 compile_cmd.push(sys_lib.clone());
             }
@@ -432,3 +460,5 @@ impl CompileCmdBuilder {
         compile_cmd
     }
 }
+
+impl CompileCmdBuilder {}

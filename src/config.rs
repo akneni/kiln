@@ -2,7 +2,8 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    path::{Path, PathBuf}, process,
+    path::{Path, PathBuf},
+    process,
 };
 use toml;
 
@@ -105,20 +106,19 @@ impl Config {
 
     pub fn get_compiler_path(&self) -> String {
         match &self.build_options.compiler {
-            Some(p) => {
-                p.clone()
-            }
-            None => {
-                match self.project.language.as_str() {
-                    "c" => "gcc".to_string(),
-                    "c++" => "g++".to_string(),
-                    "cuda" => "nvcc".to_string(),
-                    _ => {
-                        eprintln!("Language `{}` is not supported", self.project.language.as_str());
-                        process::exit(1);
-                    }
+            Some(p) => p.clone(),
+            None => match self.project.language.as_str() {
+                "c" => "gcc".to_string(),
+                "c++" => "g++".to_string(),
+                "cuda" => "nvcc".to_string(),
+                _ => {
+                    eprintln!(
+                        "Language `{}` is not supported",
+                        self.project.language.as_str()
+                    );
+                    process::exit(1);
                 }
-            }
+            },
         }
     }
 
@@ -132,7 +132,6 @@ impl Config {
 }
 
 impl Project {
-
     /// Returns the file exension with the `.` in front
     pub fn language_ext(&self) -> &'static str {
         match self.language.as_str() {
@@ -162,7 +161,7 @@ impl Default for BuildOptions {
             "-fsanitize=undefined".to_string(),
         ];
         let release_flags = vec!["-O3".to_string()];
-        let shared_flags= vec!["-Wall".to_string()];
+        let shared_flags = vec!["-Wall".to_string()];
 
         BuildOptions {
             standard: None,
@@ -187,13 +186,13 @@ impl KilnIngot {
         let (owner, _repo) = package_manager::parse_github_uri(&self.uri).unwrap();
         owner
     }
-    
+
     pub fn repo_name(&self) -> &str {
         let (_owner, repo) = package_manager::parse_github_uri(&self.uri).unwrap();
         repo
     }
 
-    /// Returns the path to the root directory of the project. 
+    /// Returns the path to the root directory of the project.
     pub fn get_global_path(&self) -> PathBuf {
         let (owner, repo) = package_manager::parse_github_uri(&self.uri).unwrap();
 
@@ -209,7 +208,7 @@ impl KilnIngot {
         let cfg = Config::from(&cfg_file)?;
         Ok(Some(cfg))
     }
-    
+
     /// Adds a dependency if it doesn't already exist
     /// Returns true if the dependency already exists
     pub fn add_dependency(deps: &mut Vec<KilnIngot>, new_dep: KilnIngot) -> bool {

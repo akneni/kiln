@@ -1,11 +1,13 @@
 pub mod lexer_c;
 
-use std::{collections::{HashMap, HashSet, hash_map}, fs, mem};
+use std::{
+    collections::{hash_map, HashMap, HashSet},
+    fs, mem,
+};
 
 use anyhow::{anyhow, Result};
 
 use crate::{config, constants};
-
 
 // Maps character's ascii codes to their token
 const TOKEN_MAPPING: [Option<Token>; 128] = [
@@ -178,7 +180,7 @@ pub enum Token<'a> {
     Tab,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ProjTokens<'self_> {
     // Maps full file paths to its source code
     code_files: HashMap<String, Option<String>>,
@@ -197,14 +199,11 @@ impl<'a> Token<'a> {
         for &t in tokens.iter() {
             if let Token::Object(s) = t {
                 string.push_str(s);
-            }
-            else if let Token::Literal(s) = t {
+            } else if let Token::Literal(s) = t {
                 string.push_str(s);
-            }
-            else if let Token::Comment(c) = t {
+            } else if let Token::Comment(c) = t {
                 string.push_str(c);
-            } 
-            else {
+            } else {
                 for i in 0..TOKEN_MAPPING.len() {
                     if let Some(c) = TOKEN_MAPPING[i] {
                         if c == t {
@@ -218,15 +217,11 @@ impl<'a> Token<'a> {
     }
 }
 
-
 impl<'self_> ProjTokens<'self_> {
     pub fn new(config: &config::Config) -> Self {
         let mut proj_tokens = Self::default();
 
-        let dir_groups = &[
-            &config.project.src_dirs,
-            &config.project.include_dirs,
-        ];
+        let dir_groups = &[&config.project.src_dirs, &config.project.include_dirs];
 
         for &dir_group in dir_groups {
             for src_dir in dir_group {
@@ -236,19 +231,22 @@ impl<'self_> ProjTokens<'self_> {
                             continue;
                         }
 
-                        let src_file_str = src_file.path()
+                        let src_file_str = fs::canonicalize(src_file.path())
+                            .unwrap()
                             .to_str()
                             .unwrap()
                             .to_string();
-    
-                        let valid_files = &[
-                            config.project.language_ext(),
-                            config.project.header_ext(),
-                        ];
 
-                        if valid_files.iter().any(|&ext| src_dir.ends_with(ext)) {
+                        let valid_files =
+                            &[config.project.language_ext(), config.project.header_ext()];
+
+                        if valid_files.iter().any(|&ext| src_file_str.ends_with(ext)) {
                             proj_tokens.code_files.insert(src_file_str.clone(), None);
                         }
+                    }                    
+                    else if let Err(_e) = src_file {
+                        #[cfg(debug_assertions)]
+                        println!("{:?}", _e);
                     }
                 }
             }
@@ -267,14 +265,14 @@ impl<'self_> ProjTokens<'self_> {
         }
         None
     }
-    
+
     pub fn main_filepath(&self) -> Option<String> {
         match &self.main_file {
             Some((exists, filepath)) => {
                 if !exists {
-                    return None
+                    return None;
                 } else {
-                    return Some(filepath.clone())
+                    return Some(filepath.clone());
                 }
             }
             None => {
@@ -283,38 +281,29 @@ impl<'self_> ProjTokens<'self_> {
                     let mut has_main = false;
                     let mut has_open_paren = false;
                     let has_close_paren = false;
-                    
+
                     for token in tokens {
                         if !has_int {
                             if let Token::Object("int") = token {
                                 has_int = true;
                             }
-                        }
-                        else if !has_main {
-                            match token {                               
+                        } else if !has_main {
+                            match token {
                                 Token::Object("main") => has_main = true,
-                                Token::Comment(_) |
-                                Token::Space |
-                                Token::Tab |
-                                Token::NewLine => {},
+                                Token::Comment(_) | Token::Space | Token::Tab | Token::NewLine => {}
                                 _ => has_int = false,
                             }
-                        }
-                        else if !has_open_paren {
-                            match token {                               
+                        } else if !has_open_paren {
+                            match token {
                                 Token::OpenParen => has_open_paren = true,
-                                Token::Comment(_) |
-                                Token::Space |
-                                Token::Tab |
-                                Token::NewLine => {},
+                                Token::Comment(_) | Token::Space | Token::Tab | Token::NewLine => {}
                                 _ => {
                                     has_int = false;
                                     has_main = false;
                                 }
-                            }   
-                        }
-                        else if !has_close_paren {
-                            match token {                               
+                            }
+                        } else if !has_close_paren {
+                            match token {
                                 Token::CloseParen => return Some(filepath),
                                 Token::Tick => {
                                     has_int = false;
@@ -322,10 +311,9 @@ impl<'self_> ProjTokens<'self_> {
                                     has_open_paren = false;
                                 }
                                 _ => {}
-                            }  
+                            }
                         }
                     }
-
                 }
                 None
             }
@@ -333,8 +321,9 @@ impl<'self_> ProjTokens<'self_> {
     }
 
     /// Returns None if there is no file in the project direcotry with the name specified
-    pub fn get_tokens<'a>(&'a self, filepath: &str) -> Option<&'a Vec<Token<'self_>>> 
-        where 'a: 'self_
+    pub fn get_tokens<'a>(&'a self, filepath: &str) -> Option<&'a Vec<Token<'self_>>>
+    where
+        'a: 'self_,
     {
         let mut filepath = filepath.to_string();
         if let None = self.code_files.get(&filepath) {
@@ -349,21 +338,20 @@ impl<'self_> ProjTokens<'self_> {
         }
 
         let code_text = match self.code_files.get(&filepath) {
-            Some(code_text) => {
-                match code_text {
-                    Some(code_text) => code_text,
-                    None => {
-                        let code_text = fs::read_to_string(&filepath).unwrap();
-                        unsafe {
-                            let code_files_ptr = &self.code_files as *const HashMap<String, Option<String>>;
-                            let code_files_ptr = code_files_ptr as *mut HashMap<String, Option<String>>;
-                            (*code_files_ptr).insert(filepath.clone(), Some(code_text));
-                        }
-
-                        self.code_files.get(&filepath).unwrap().as_ref().unwrap()
+            Some(code_text) => match code_text {
+                Some(code_text) => code_text,
+                None => {
+                    let code_text = fs::read_to_string(&filepath).unwrap();
+                    unsafe {
+                        let code_files_ptr =
+                            &self.code_files as *const HashMap<String, Option<String>>;
+                        let code_files_ptr = code_files_ptr as *mut HashMap<String, Option<String>>;
+                        (*code_files_ptr).insert(filepath.clone(), Some(code_text));
                     }
+
+                    self.code_files.get(&filepath).unwrap().as_ref().unwrap()
                 }
-            }
+            },
             None => {
                 return None;
             }
@@ -371,7 +359,7 @@ impl<'self_> ProjTokens<'self_> {
 
         let tokens = lexer_c::tokenize(&code_text).unwrap();
         unsafe {
-            let tokens_ptr= &self.tokens as *const HashMap<String, Vec<Token<'self_>>>;
+            let tokens_ptr = &self.tokens as *const HashMap<String, Vec<Token<'self_>>>;
             let tokens_ptr = tokens_ptr as *mut HashMap<String, Vec<Token<'self_>>>;
             (*tokens_ptr).insert(filepath.to_string(), tokens);
         }
@@ -380,18 +368,15 @@ impl<'self_> ProjTokens<'self_> {
     }
 
     pub fn iter_tokens(&self) -> ProjTokensIter {
-        let filepaths: Vec<String> = self.code_files
-            .keys()
-            .map(|k| k.clone())
-            .collect();
+        let filepaths: Vec<String> = self.code_files.keys().map(|k| k.clone()).collect();
 
         ProjTokensIter {
-            proj_tokens: unsafe { mem::transmute(self as *const Self as *mut Self) }, 
-            filepaths, 
-            idx: 0 
+            proj_tokens: unsafe { mem::transmute(self as *const Self as *mut Self) },
+            filepaths,
+            idx: 0,
         }
     }
-    
+
     pub fn iter_filepaths(&self) -> hash_map::Keys<'_, String, Option<String>> {
         self.code_files.keys()
     }
@@ -428,10 +413,7 @@ impl<'a> Iterator for ProjTokensIter<'a> {
 
 /// Returns an error if there are any duplicate definitions
 /// Otherwise, adds all definitions in `src` to `dst`
-pub fn merge_defines<'a>(
-    dst: &mut Vec<&'a [Token<'a>]>,
-    src: &[&'a [Token<'a>]],
-) -> Result<()> {
+pub fn merge_defines<'a>(dst: &mut Vec<&'a [Token<'a>]>, src: &[&'a [Token<'a>]]) -> Result<()> {
     let mut dst_set = HashSet::new();
 
     for &tokens in dst.iter() {
@@ -453,10 +435,7 @@ pub fn merge_defines<'a>(
 
 /// Returns an error if there are any duplicate definitions
 /// Otherwise, adds all definitions in `src` to `dst`
-pub fn merge_includes<'a>(
-    dst: &mut Vec<&'a [Token<'a>]>,
-    src: &[&'a [Token<'a>]],
-) {
+pub fn merge_includes<'a>(dst: &mut Vec<&'a [Token<'a>]>, src: &[&'a [Token<'a>]]) {
     let mut dst_set = HashSet::new();
 
     for &tokens in dst.iter() {
@@ -474,10 +453,7 @@ pub fn merge_includes<'a>(
 
 /// Returns an error if there are any duplicate definitions
 /// Otherwise, adds all definitions in `src` to `dst`
-pub fn merge_udts<'a>(
-    dst: &mut Vec<&'a [Token<'a>]>,
-    src: &[&'a [Token<'a>]],
-) -> Result<()> {
+pub fn merge_udts<'a>(dst: &mut Vec<&'a [Token<'a>]>, src: &[&'a [Token<'a>]]) -> Result<()> {
     let mut dst_set = HashSet::new();
 
     for &tokens in dst.iter() {
@@ -565,13 +541,17 @@ pub fn filter_out_includes<'a>(
         .collect()
 }
 
-
 /// Passing the below list to this function would return `3` (gets the next token, not the current token)
 /// `[object-token-curr, whitespace, whitespace, object-token-next]`
 #[inline]
 pub fn next_non_whitespace_token(tokens: &[Token]) -> usize {
     let mut idx = 1;
-    while idx < tokens.len() && matches!(tokens[idx], Token::Space | Token::Tab | Token::NewLine | Token::Comment(_)) {
+    while idx < tokens.len()
+        && matches!(
+            tokens[idx],
+            Token::Space | Token::Tab | Token::NewLine | Token::Comment(_)
+        )
+    {
         idx += 1;
     }
 

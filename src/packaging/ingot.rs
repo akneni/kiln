@@ -26,11 +26,10 @@ impl IngotMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metadata {
-    // Some ingots will only have code, and some may only have precompiled static libraries. 
-    // These fields tell us which is which. 
+    // Some ingots will only have code, and some may only have precompiled static libraries.
+    // These fields tell us which is which.
     pub source_support: bool,
     pub staticlib_support: bool,
     pub sys_libs: Vec<String>,
     pub ingot_deps: Vec<KilnIngot>,
 }
-

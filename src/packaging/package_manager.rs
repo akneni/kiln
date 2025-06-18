@@ -327,11 +327,7 @@ pub fn check_pkgs<'a>(config: &'a Config) -> Vec<[String; 3]> {
     not_installed
 }
 
-fn check_pkg_h(
-    dep: &KilnIngot,
-    output: &mut Vec<[String; 3]>,
-    pkgs_visited: &mut HashSet<String>,
-) {
+fn check_pkg_h(dep: &KilnIngot, output: &mut Vec<[String; 3]>, pkgs_visited: &mut HashSet<String>) {
     if pkgs_visited.contains(dep.uri.as_str()) {
         return;
     }

@@ -103,6 +103,7 @@ pub fn validate_proj_repo(path: &Path) -> Result<()> {
 pub struct ProjBuilder<'a> {
     config: &'a Config,
     ingots: HashSet<String>,
+    build_profile: Option<BuildProfile>,
     pub compile_cmd: CompileCmdBuilder,
 }
 
@@ -200,6 +201,7 @@ impl<'a> ProjBuilder<'a> {
             config,
             ingots: HashSet::new(),
             compile_cmd,
+            build_profile: None
         };
 
         project_builder.link_sys_lib(proj_tokens);
@@ -297,7 +299,11 @@ impl<'a> ProjBuilder<'a> {
         }
     }
 
-    pub fn build_exe(&mut self, build_prof: BuildProfile) -> Result<()> {
+    pub fn add_build_profile(&mut self, profile: &str) {
+        self.build_profile = Some(BuildProfile::from(profile));
+    }
+
+    pub fn build_exe(&mut self) -> Result<()> {
         let mut output_file = self.config.project.name.to_string();
         output_file.push_str(constants::EXECUTABLE_FE);
 
@@ -307,8 +313,19 @@ impl<'a> ProjBuilder<'a> {
             ("sh", "-c")
         };
 
+        // Makes sure the output directory exists
+        let mut output_dir = env::current_dir().unwrap();
+        output_dir.push("build");
+        output_dir.push(self.build_profile.unwrap().to_str(false));
+        if !output_dir.exists() {
+            fs::create_dir_all(output_dir).unwrap()
+        }
+        else if !output_dir.is_dir() {
+            eprintln!("Trying to build code and place output in `{:?}` but it exists and isn't a directory", output_dir);
+        }
+
         let compile_cmd = self
-            .generate_compile_cmd(config::BuildType::exe, build_prof)
+            .generate_compile_cmd(config::BuildType::exe)
             .join(" ");
 
         let cmd = process::Command::new(shell)
@@ -379,27 +396,28 @@ impl<'a> ProjBuilder<'a> {
         .unwrap();
     }
 
-    pub fn generate_compile_cmd(
-        &self,
-        build_type: config::BuildType,
-        build_prof: BuildProfile,
-    ) -> Vec<String> {
+    pub fn generate_compile_cmd(&self, build_type: config::BuildType) -> Vec<String> {
         let mut compile_cmd = vec![self.compile_cmd.compiler.clone()];
 
         if let config::BuildType::dynamic_library = build_type {
             compile_cmd.push("-shared".to_string());
         }
 
-        match build_prof {
-            BuildProfile::Debug => {
+        match self.build_profile {
+            Some(BuildProfile::Debug) => {
                 for flag in &self.compile_cmd.debug_compiler_flags {
                     compile_cmd.push(flag.clone());
                 }
             }
-            BuildProfile::Release => {
+            Some(BuildProfile::Release) => {
                 for flag in &self.compile_cmd.release_compiler_flags {
                     compile_cmd.push(flag.clone());
                 }
+            }
+            None => {
+                println!("Didn't add a build profile.");
+                println!("If you're seeing this as a user, please file a github issue");
+                process::exit(1);
             }
         }
 
@@ -411,7 +429,7 @@ impl<'a> ProjBuilder<'a> {
 
         let mut output_file = env::current_dir().unwrap();
         output_file.push("build");
-        output_file.push(build_prof.to_str(false));
+        output_file.push(self.build_profile.unwrap().to_str(false));
         output_file.push(&self.config.project.name);
         let output_file = output_file.to_str().unwrap();
 
@@ -459,6 +477,5 @@ impl<'a> ProjBuilder<'a> {
 
         compile_cmd
     }
-}
 
-impl CompileCmdBuilder {}
+}

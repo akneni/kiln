@@ -222,9 +222,10 @@ async fn main() {
                         builder.attach_ingot(ingot);
                     }
                 }
+                builder.set_build_profile(&profile);
 
                 let compile_cmd =
-                    builder.generate_compile_cmd(b_type, build_sys::BuildProfile::from(&profile));
+                    builder.generate_compile_cmd(b_type);
                 println!("{}\n", compile_cmd.join(" "));
             }
         }
@@ -363,10 +364,12 @@ fn handle_build(
         }
     }
 
-    let profile = build_sys::BuildProfile::from(profile);
+    builder.set_build_profile(profile);
+
+    
     match build_type {
         config::BuildType::exe => {
-            builder.build_exe(profile)?;
+            builder.build_exe()?;
         }
         config::BuildType::ingot => {
             builder.build_ingot();
@@ -598,7 +601,9 @@ fn handle_tests(
         .source_files
         .insert(test_file.to_string());
 
-    builder.build_exe(build_sys::BuildProfile::from(profile))?;
+    builder.set_build_profile(profile);
+
+    builder.build_exe()?;
 
     let bin_path = cwd
         .join("build")

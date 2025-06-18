@@ -299,7 +299,8 @@ impl<'a> ProjBuilder<'a> {
         }
     }
 
-    pub fn add_build_profile(&mut self, profile: &str) {
+    #[inline]
+    pub fn set_build_profile(&mut self, profile: &str) {
         self.build_profile = Some(BuildProfile::from(profile));
     }
 

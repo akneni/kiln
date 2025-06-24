@@ -416,22 +416,19 @@ fn handle_execution(
 
 fn handle_gen_headers<'a>(
     config: &Config,
-    mut files: Vec<String>,
+    files: Vec<String>,
     proj_tokens: &'a ProjTokens<'a>,
 ) -> Result<()> {
     let cwd = env::current_dir()?;
 
     let inc_dir = &config.project.include_dirs[0];
 
-    for i in 0..files.len() {
-        let idx = files[i].rfind('/');
-        if let Some(idx) = idx {
-            files[i] = files[i][(idx + 1)..].to_string();
-        }
-    }
-
     for file in &files {
-        let (raw_name, file_ext) = file.rsplit_once(".").unwrap();
+        let (mut raw_name, file_ext) = file.rsplit_once(".").unwrap();
+        if raw_name.contains(constants::FP_SEP) {
+            raw_name = raw_name.rsplit_once(constants::FP_SEP).unwrap().1;
+        }
+
         let filepath = cwd.join(file);
         let filepath_str = filepath.to_str().unwrap().to_string();
 

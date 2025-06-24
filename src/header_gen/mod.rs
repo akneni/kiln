@@ -257,9 +257,14 @@ impl<'self_> ProjTokens<'self_> {
     /// If supplied a file name, this will return the full path
     /// Returns none if no file with that name was found.
     fn expand_filename(&self, filename: &str) -> Option<String> {
-        let fpath_end = format!("{}{}", constants::FP_SEP, filename);
+        let fpath_end = if filename.starts_with("/") {
+            filename.to_string()
+        } else {
+            format!("{}{}", constants::FP_SEP, filename)
+        };
+
         for s in self.code_files.keys() {
-            if s == filename || s.ends_with(&fpath_end) {
+            if s == &fpath_end || s.ends_with(&fpath_end) {
                 return Some(s.clone());
             }
         }
@@ -329,7 +334,10 @@ impl<'self_> ProjTokens<'self_> {
         if let None = self.code_files.get(&filepath) {
             filepath = match self.expand_filename(&filepath) {
                 Some(r) => r,
-                None => return None,
+                None => {
+                    println!("(1): {:?}", self);
+                    return None
+                },
             };
         }
 

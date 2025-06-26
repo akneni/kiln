@@ -661,4 +661,22 @@ mod lexer_tests {
 
         fs::write("tests/lexer.test_get_udt_name.log", format!("{}", dump)).unwrap();
     }
+
+    #[test]
+    fn test_get_fn_def() {
+        let s = fs::read_to_string("tests/lexer-fn-def.c").unwrap();
+        let tokens = tokenize(&s).unwrap();
+
+        let fn_defs = get_fn_def(&tokens);
+
+        let mut log_dump = "".to_string();
+        for &def in &fn_defs {
+            let x = format!("{:?}\n\n", def);
+            log_dump.push_str(&x);
+        }
+
+        fs::write("tests/lexer.test_get_fn_def.log", format!("{}", log_dump)).unwrap();
+
+        assert_eq!(fn_defs.len(), 3);
+    }
 }

@@ -5,11 +5,13 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.98"
+bincode = "1.3.3"
 clap = { version = "4.5.40", features = ["derive"] }
 colored = "2.1.0"
 flate2 = "1.1.2"
 home = "0.5.9"
 once_cell = "1.21.3"
+pubgrub = "0.3.0"
 reqwest = "0.12.20"
 serde = { version = "1.0.219", features = ["derive"] }
 serde-xml-rs = "0.6.0"

@@ -22,7 +22,7 @@ use testing::safety;
 #[cfg(debug_assertions)]
 use std::time;
 
-use crate::{build_sys::ProjBuilder, header_gen::ProjTokens};
+use crate::{build_sys::ProjBuilder, constants::LOCK_FILE, header_gen::ProjTokens};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -110,9 +110,9 @@ async fn main() {
                 process::exit(1);
             }
             let mut config = config.unwrap();
+            let mut lockfile = config::LockFile::from(LOCK_FILE).unwrap();
 
-            let (owner, proj_name) = package_manager::parse_github_uri(&dep_uri).unwrap();
-            let res = package_manager::resolve_adding_package(&mut config, owner, proj_name, None);
+            let res = package_manager::add_ingot(&mut config, &mut lockfile, &dep_uri);
 
             if let Err(err) = res.await {
                 match &err {
@@ -132,7 +132,8 @@ async fn main() {
                 std::process::exit(1);
             }
 
-            config.to_disk(Path::new(constants::CONFIG_FILE));
+            config.to_disk(constants::CONFIG_FILE);
+            lockfile.to_disk(constants::LOCK_FILE);
 
             let cwd = env::current_dir().unwrap();
             editors::handle_editor_includes(&config, &cwd).unwrap();

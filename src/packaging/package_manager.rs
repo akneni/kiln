@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tar::Archive;
 use tempfile::TempDir;
 
-use anyhow;
+use anyhow::{Result, anyhow};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -106,7 +106,7 @@ pub fn parse_github_uri(uri: &str) -> Result<(&str, &str), PkgError> {
     Ok((owner, proj_name))
 }
 
-async fn find_tags(owner: &str, repo_name: &str) -> Result<Vec<Tag>, PkgError> {
+async fn find_tags(owner: String, repo_name: String) -> Result<Vec<Tag>, PkgError> {
     let endpoint = format!("https://api.github.com/repos/{}/{}/tags", owner, repo_name);
 
     // println!("Endpoint: {}", endpoint);
@@ -193,55 +193,84 @@ async fn install_globally(package: &KilnIngot, tag: &Tag) -> Result<(), PkgError
 
 /// Takes care of the entire installation process (High Level Function)
 /// PRECONDITION: CWD must be in the root directory of a kiln project
-/// This *will* take care of chained dependncies
-pub async fn resolve_adding_package(
+/// This will take care of chained dependncies.
+/// This assumes that the kiln file and lock file are compatible. 
+pub async fn add_ingot(
     config: &mut config::Config,
-    owner: &str,
-    proj_name: &str,
+    lockfile: &mut config::LockFile,
+    url: &str,
     version: Option<&str>,
 ) -> Result<(), PkgError> {
-    // TODO: Add a better error message by providing the link to see all the github repo's tags
     if let None = config.dependency {
         config.dependency = Some(vec![]);
     }
 
-    let mut packages_added: HashSet<String> = HashSet::new();
+    let (owner, repo_name) = parse_github_uri(&url)?;
+    let mut tags = find_tags(owner.to_string(), repo_name.to_string()).await?;
 
-    let mut deps = vec![[
-        owner.to_string(),
-        proj_name.to_string(),
-        version.unwrap_or("").to_string(),
-    ]];
+    if let Some(version) = version {
+        let mut contains = false;
+        let mut idx = 0;
+        for (i, tag) in tags.iter().enumerate() {
+            if tag.name == version {
+                contains = true;
+                idx = i;
+                break;
+            }
+        }
 
-    while deps.len() > 0 {
+        if !contains {
+            let version_lst = tags
+                .into_iter()
+                .map(|t| t.name)
+                .collect::<Vec<String>>()
+                .join("\n");
+            eprintln!(
+                "Version {} doesn't exist for {}.\n\nValid Versions:\n{}", 
+                version, repo_name, version_lst
+            );
+            std::process::exit(1);
+        }
+        tags = vec![tags[idx].clone()];
+    }
+
+
+    Ok(())
+}
+
+async fn dep_resolution_loop(
+    lockfile: &mut config::LockFile,
+    url: &str,
+    // tags: &Vec<Tag>,
+) -> Result<()> {
+    let mut unadded_deps = vec![url.to_string()];
+
+    while unadded_deps.len() > 0 {
         let mut futures = vec![];
 
-        for dep in &deps {
-            let owner = dep[0].clone();
-            let proj_name = dep[1].clone();
-            let version = if dep[2] == "" {
-                None
-            } else {
-                Some(dep[2].clone())
-            };
+        for dep in &unadded_deps {
+            let (owner, repo_name) = parse_github_uri(&dep)?;
 
-            let repo_name = format!("https://github.com/{}/{}", owner, proj_name);
-            if packages_added.contains(&repo_name) {
+            if lockfile.ingot_url.contains(dep) {
                 continue;
             }
-            packages_added.insert(repo_name);
 
-            let f = add_package(owner, proj_name, version);
+            let f = find_tags(owner.to_string(), repo_name.to_string());
             let f = tokio::spawn(f);
-            futures.push(f);
+            futures.push((f, dep.clone()));
         }
-        deps.clear();
 
-        for f in futures {
-            let (chain_deps, cfg) = f.await??;
-            let kiln_dcf_deps = config.dependency.as_mut().unwrap();
-            config::KilnIngot::add_dependency(kiln_dcf_deps, cfg);
-            deps.extend(chain_deps);
+
+        for (f, dep_uri) in futures {
+            let tags = f.await??;
+
+            
+
+
+
+            // let kiln_dcf_deps = config.dependency.as_mut().unwrap();
+            // config::KilnIngot::add_dependency(kiln_dcf_deps, cfg);
+            // unadded_deps.extend(chain_deps);
         }
     }
 
@@ -258,7 +287,7 @@ async fn add_package(
     // TODO: Add a better error message by providing the link to see all the github repo's tags
     let repo_name = format!("https://github.com/{}/{}", owner, proj_name);
 
-    let tags = find_tags(&owner, &proj_name).await?;
+    let tags = find_tags(owner.clone(), proj_name.clone()).await?;
     if tags.len() == 0 {
         return Err(PkgError::UsrErr(format!(
             "No versions available for {}",
@@ -298,7 +327,7 @@ async fn add_package(
         }
         let chain_deps = cfg.dependency.as_ref().unwrap();
         for chain_dep in chain_deps {
-            let (chain_owner, chain_repo) = parse_github_uri(&chain_dep.uri)?;
+            let (chain_owner, chain_repo) = parse_github_uri(&chain_dep.url)?;
 
             chain_dep_ids.push([
                 chain_owner.to_string(),
@@ -328,10 +357,10 @@ pub fn check_pkgs<'a>(config: &'a Config) -> Vec<[String; 3]> {
 }
 
 fn check_pkg_h(dep: &KilnIngot, output: &mut Vec<[String; 3]>, pkgs_visited: &mut HashSet<String>) {
-    if pkgs_visited.contains(dep.uri.as_str()) {
+    if pkgs_visited.contains(dep.url.as_str()) {
         return;
     }
-    pkgs_visited.insert(dep.uri.clone());
+    pkgs_visited.insert(dep.url.clone());
 
     if !dep.get_global_path().exists() {
         let pkg = [

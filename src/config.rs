@@ -1,9 +1,7 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::{
-    fs,
-    path::{Path, PathBuf},
-    process,
+    collections::HashSet, fs, path::{Path, PathBuf}, process
 };
 use toml;
 
@@ -40,7 +38,7 @@ pub struct BuildOptions {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KilnIngot {
-    pub uri: String,
+    pub url: String,
     pub version: String,
 }
 
@@ -177,24 +175,24 @@ impl Default for BuildOptions {
 impl KilnIngot {
     pub fn new(owner: &str, repo_name: &str, version: &str) -> Self {
         KilnIngot {
-            uri: format!("https://github.com/{}/{}.git", owner, repo_name),
+            url: format!("https://github.com/{}/{}.git", owner, repo_name),
             version: version.to_string(),
         }
     }
 
     pub fn owner(&self) -> &str {
-        let (owner, _repo) = package_manager::parse_github_uri(&self.uri).unwrap();
+        let (owner, _repo) = package_manager::parse_github_uri(&self.url).unwrap();
         owner
     }
 
     pub fn repo_name(&self) -> &str {
-        let (_owner, repo) = package_manager::parse_github_uri(&self.uri).unwrap();
+        let (_owner, repo) = package_manager::parse_github_uri(&self.url).unwrap();
         repo
     }
 
     /// Returns the path to the root directory of the project.
     pub fn get_global_path(&self) -> PathBuf {
-        let (owner, repo) = package_manager::parse_github_uri(&self.uri).unwrap();
+        let (owner, repo) = package_manager::parse_github_uri(&self.url).unwrap();
 
         (*PACKAGE_DIR).join(owner).join(repo).join(&self.version)
     }
@@ -229,3 +227,44 @@ impl PartialEq for KilnIngot {
         self.owner() == other.owner() && self.repo_name() == other.repo_name()
     }
 }
+
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct LockFile {
+    // Here, the `version` field for each KilnIngot is guarenteed to be a specific version
+    // (as opposed to something like "<=1.0.0,>2.0.0")
+    pub ingots: Vec<KilnIngot>,
+    pub ingot_url: HashSet<String>
+}
+
+impl LockFile {
+    pub fn from(path: impl AsRef<Path>) -> Result<Self> {
+        if !path.as_ref().exists() {
+            return Ok(Self::default());
+        }
+
+        let lock_file_bin = fs::read(&path)?;
+        
+        match bincode::deserialize(&lock_file_bin) {
+            Ok(r) => Ok(r),
+            Err(e) => {
+                #[cfg(debug_assertions)] dbg!(e);
+                fs::remove_file(&path)?;
+                Ok(Self::default())
+            }   
+        }
+    }
+
+    pub fn to_disk(&self, path: impl AsRef<Path>) -> Result<()> {
+        let binary_lock = bincode::serialize(&self)?;
+        fs::write(path, &binary_lock);
+        Ok(())
+    }
+
+    /// Selects the correct versions of each of the ingots and adds them to 
+    /// the self lockfile structure. 
+    pub fn add_ingots(&mut self, ingots: &[(String, &[package_manager::Tag])]) {
+        // the first element of string is the github url (same as the url field in kiln ingot)
+    }
+}
+

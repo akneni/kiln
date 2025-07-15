@@ -7,6 +7,7 @@ use std::{
 };
 
 pub const CONFIG_FILE: &str = "Kiln.toml";
+pub const LOCK_FILE: &str = "Kiln.lock";
 pub const DEV_ENV_CFG_FILE: &str = "kiln-dev-env-config.toml";
 pub const PACKAGE_CONFIG_FILE: &str = "ingot.toml";
 

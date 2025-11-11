@@ -43,7 +43,7 @@ pub enum Token<'a> {
 
 impl<'a> Token<'a> {
     pub fn tokens_to_string(tokens: &[Token]) -> String {
-        let mut string = String::new();
+        let mut string = String::with_capacity(tokens.len() * 3);
 
         for &t in tokens.iter() {
             if let Token::Object(s) = t {
@@ -60,6 +60,7 @@ impl<'a> Token<'a> {
                     if let Some(c) = TOKEN_MAPPING[i] {
                         if c == t {
                             string.push((i as u8) as char);
+                            break;
                         }
                     }
                 }
